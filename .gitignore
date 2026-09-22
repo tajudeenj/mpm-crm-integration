@@ -1,0 +1,17 @@
+# Compiled Java classes
+*.class
+
+# Oracle JDBC driver (too large, add manually)
+ojdbc8.jar
+
+# Runtime log
+crm-admin.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/

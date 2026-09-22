@@ -1,0 +1,341 @@
+=====================================================================
+MPM CRM INTEGRATION — COMPLETE OBJECTS INVENTORY
+ADIB | Oracle ALMADAR → IBM APIC → Microsoft Dynamics 365
+=====================================================================
+Prepared by : Tajudeen Jalaudin | Senior Solution Architect | ADIB
+Date        : August 2026
+Environment : DEV → SIT
+=====================================================================
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 1 — TABLES (9)
+═════════════════════════════════════════════════════════════════════
+
+  #   Table Name                      Purpose
+  ─── ─────────────────────────────── ──────────────────────────────────────────
+  1   CRM_MPM_API_CREDENTIALS         OAuth2 token URL, client_id, client_secret,
+                                      wallet path/password, token cache.
+                                      One row: CRED_CODE = APIC_PXRM
+
+  2   CRM_MPM_API_REGISTRY            Master config — one row per service (13 rows).
+                                      Holds APIC endpoint URL, record-type header,
+                                      record-action header, source view, key column,
+                                      JSON mapping name, callback target table,
+                                      retry/timeout settings.
+
+  3   CRM_MPM_API_FIELD_MAPPING       Maps Oracle view column → JSON path.
+                                      Dot notation builds nested objects.
+                                      e.g. SOURCE_COLUMN=COUNTRY_CODE →
+                                           JSON_PATH=country.country_id
+                                      One row per field per service mapping group.
+
+  4   CRM_MPM_API_WATERMARK           Last processed LAST_UPDATE_DATE per service.
+                                      Package reads WHERE filter_col > watermark.
+                                      Advances per-row after each successful send.
+                                      Reset to 2000-01-01 to reprocess all records.
+
+  5   CRM_MPM_CRM_INTEGRATION_LOG     Full audit — one row per send attempt.
+                                      Stores LEG 1 (ACK_REQUEST_ID, HTTP status,
+                                      ACK_RESPONSE_TIMESTAMP, X_UNIQUE_ID) and
+                                      LEG 2 (CRM_ENTITY_ID, CALLBACK_RESULT_CODE,
+                                      CALLBACK_VALID_ERRORS, CALLBACK_DATE).
+                                      FINAL_STATUS: PENDING→SENT→SUCCESS/FAILED/
+                                      TIMEOUT/EXHAUSTED/VALIDATION_FAILED etc.
+
+  6   CRM_MPM_JOB_RUN_HISTORY         One row per DBMS_SCHEDULER execution.
+                                      Records job name, status, start/end time,
+                                      records processed/success/failed.
+                                      Also used by job-lock guard.
+
+  7   CRM_MPM_ERROR_CODE_MASTER       Reference table for error/callback codes.
+                                      Outbound: SUCCESS, AUTH_FAILED, CONN_FAILED,
+                                      TIMEOUT, EXHAUSTED, UNKNOWN_ERROR etc.
+                                      Callback: CB_0000, CB_1001, CB_1002, CB_1003.
+                                      IS_RETRYABLE flag controls retry eligibility.
+
+  8   CRM_MPM_UNIQUE_ID_CONFIG        Controls x-unique-id header format.
+                                      CHANNEL_ID=817, TIMESTAMP_FORMAT, 
+                                      SEQUENCE_DIGITS=4.
+                                      No package recompile needed to change values.
+
+  9   CRM_MPM_CALLBACK_AUDIT_LOG      Raw audit of every LEG 2 callback received.
+                                      Written FIRST using AUTONOMOUS_TRANSACTION
+                                      before any processing — survives rollback.
+                                      Stores: SERVICE_NAME, X_UNIQUE_ID, CHANNEL_ID,
+                                      REQUEST_ID, PROCESSING_STATUS, PROCESSING_MSG,
+                                      MATCHED_LOG_ID, RESPONSE_SENT,
+                                      STATUS_CODE_SENT, DESCRIPTION_SENT,
+                                      RAW_PAYLOAD (full JSON from CRM).
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 2 — PACKAGE (1)
+═════════════════════════════════════════════════════════════════════
+
+  Package Name : PKG_CRM_INTEGRATION
+  Objects      : 1 x PACKAGE SPEC + 1 x PACKAGE BODY
+  Schema       : APPS
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 3 — FUNCTIONS (3 inside PKG_CRM_INTEGRATION)
+═════════════════════════════════════════════════════════════════════
+
+  #   Function Name         Returns    Purpose
+  ─── ───────────────────── ────────── ───────────────────────────────────────
+  1   NEW_GUID              VARCHAR2   32-char hex GUID using SYS_GUID().
+                                       Used for TRANSACTION_GROUP_ID to group
+                                       all retry attempts of same record.
+
+  2   GENERATE_UNIQUE_ID    VARCHAR2   Builds x-unique-id header value.
+                                       Format: CHANNEL_ID + timestamp + seq.
+                                       Reads from CRM_MPM_UNIQUE_ID_CONFIG.
+                                       Uses CRM_MPM_UNIQUE_ID_SEQ (cycles 1-9999).
+                                       e.g. 81720260801143022120001
+
+  3   GET_BEARER_TOKEN      VARCHAR2   Fetches OAuth2 bearer token.
+                                       Checks cache first (TOKEN_CACHE_VALUE).
+                                       Re-fetches only if expired (< 60s remaining).
+                                       Calls UTL_HTTP with wallet before HTTPS.
+                                       Parameters: p_cred_code IN VARCHAR2
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 4 — PROCEDURES (6 inside PKG_CRM_INTEGRATION)
+═════════════════════════════════════════════════════════════════════
+
+  #   Procedure Name          Parameters                    Purpose
+  ─── ─────────────────────── ───────────────────────────── ──────────────────
+  1   BUILD_JSON_PAYLOAD      p_registry_id IN NUMBER       Reads CRM_MPM_API_
+                              p_source_view IN VARCHAR2     FIELD_MAPPING for
+                              p_key_col     IN VARCHAR2     this registry.
+                              p_key_value   IN VARCHAR2     Fetches row from
+                              Returns       CLOB            view via DBMS_SQL.
+                                                            Builds nested JSON
+                                                            using dot-path notation.
+                                                            DATA_TYPE=JSON embeds
+                                                            raw JSON arrays.
+
+  2   SEND_TO_APIC            p_registry_id IN NUMBER       Full LEG 1 send:
+                              p_key_value   IN VARCHAR2     1. Duplicate guard
+                              p_txn_group   IN VARCHAR2     2. Build JSON payload
+                              p_attempt_no  IN NUMBER       3. Get bearer token
+                              p_log_id_out  OUT NUMBER      4. Generate x-unique-id
+                                                            5. UTL_HTTP POST to APIC
+                                                            6. Parse ACK (request_id,
+                                                               status, description)
+                                                            7. Log result to
+                                                               INTEGRATION_LOG
+
+  3   RUN_OUTBOUND_JOB        None                          Main scheduled job:
+                                                            1. Job-lock guard
+                                                            2. Loop all active
+                                                               registry rows
+                                                            3. Read view where
+                                                               filter_col > watermark
+                                                            4. Call SEND_TO_APIC
+                                                               per row
+                                                            5. Advance watermark
+                                                               per-row (crash-safe)
+                                                            6. Write JOB_RUN_HISTORY
+
+  4   RUN_TIMEOUT_JOB         None                          Marks stale records:
+                                                            Finds SENT/PENDING rows
+                                                            older than TIMEOUT_MINUTES.
+                                                            Sets FINAL_STATUS=TIMEOUT.
+                                                            Sets EXHAUSTED when
+                                                            retry count exhausted.
+
+  5   RUN_RETRY_JOB           None                          Re-sends failed records:
+                                                            Finds FAILED/TIMEOUT rows
+                                                            where retry_count < max
+                                                            and NEXT_RETRY_DATE elapsed.
+                                                            Calls SEND_TO_APIC with
+                                                            ATTEMPT_NO+1.
+                                                            Same TRANSACTION_GROUP_ID.
+
+  6   PROCESS_CRM_CALLBACK    p_service_name     IN  VARCHAR2   LEG 2 handler:
+                              p_callback_payload IN  CLOB       Called by ESB when
+                              p_result_out       OUT VARCHAR2   CRM fires callback.
+                              p_status_code      OUT VARCHAR2   1. Audit log written
+                              p_description      OUT VARCHAR2      FIRST (autonomous)
+                              p_x_unique_id      IN  VARCHAR2   2. Validate service
+                              p_channel_id       IN  VARCHAR2   3. Parse request_id
+                                                                4. Find log row by
+                                                                   ACK_REQUEST_ID
+                                                                5. Map result_code
+                                                                   → FINAL_STATUS
+                                                                6. Update log
+                                                                7. Return JSON to ESB
+                                                                p_status_code values:
+                                                                CB_0000 = Success
+                                                                CB_1001 = Bad service
+                                                                CB_1002 = No log match
+                                                                CB_1003 = Exception
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 5 — VIEWS (2 created by integration team)
+═════════════════════════════════════════════════════════════════════
+
+  #   View Name                              Purpose
+  ─── ────────────────────────────────────── ──────────────────────────────────
+  1   XXMPM_CRM_BUILDING_CREATE_FULL_V       Extends XXMPM_CRM_BUILDING_CREATE_V
+                                             Adds 2 computed JSON array columns:
+                                             UTILITIES_JSON — array of utility
+                                             records (UTILITY_TYPE='Utilities')
+                                             SECURITY_OFFICERS_JSON — array of
+                                             watchman records (TYPE='Watchman')
+                                             Returns [] not null when no records.
+                                             Source: XXMPM_CRM_BUILDING_UTILITIES_
+                                                     CREATE_V split by UTILITY_TYPE
+
+  2   XXMPM_CRM_BUILDING_UPDATE_FULL_V       Same as above for UPDATE.
+                                             Extends XXMPM_CRM_BUILDING_UPDATE_V
+                                             Source: XXMPM_CRM_BUILDING_UTILITIES_
+                                                     UPDATE_V split by UTILITY_TYPE
+
+  NOTE: All 13 source views (XXMPM_CRM_*_V) are owned by Oracle/ALMADAR team.
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 6 — SEQUENCES (2)
+═════════════════════════════════════════════════════════════════════
+
+  #   Sequence Name              Purpose
+  ─── ────────────────────────── ─────────────────────────────────────────────
+  1   CRM_MPM_UNIQUE_ID_SEQ      4-digit cycling sequence (0001-9999) for
+                                 x-unique-id header generation.
+                                 Used by GENERATE_UNIQUE_ID function.
+
+  2   Identity columns           Auto-increment PKs on:
+                                 CRM_MPM_API_REGISTRY.REGISTRY_ID
+                                 CRM_MPM_API_FIELD_MAPPING.MAPPING_ID
+                                 CRM_MPM_CRM_INTEGRATION_LOG.LOG_ID
+                                 CRM_MPM_JOB_RUN_HISTORY.RUN_ID
+                                 CRM_MPM_CALLBACK_AUDIT_LOG.AUDIT_ID
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 7 — INDEXES
+═════════════════════════════════════════════════════════════════════
+
+  Table                          Index Name                    Columns
+  ────────────────────────────── ───────────────────────────── ──────────────
+  CRM_MPM_CRM_INTEGRATION_LOG    IX_LOG_REGISTRY_STATUS        REGISTRY_ID,
+                                                               FINAL_STATUS
+  CRM_MPM_CRM_INTEGRATION_LOG    IX_LOG_ACK_REQUEST_ID         ACK_REQUEST_ID
+  CRM_MPM_CRM_INTEGRATION_LOG    IX_LOG_SENT_DATE              SENT_DATE
+  CRM_MPM_CRM_INTEGRATION_LOG    IX_LOG_SOURCE_RECORD          SOURCE_RECORD_ID
+  CRM_MPM_CALLBACK_AUDIT_LOG     IX_CALLBACK_AUDIT_REQID       REQUEST_ID
+  CRM_MPM_CALLBACK_AUDIT_LOG     IX_CALLBACK_AUDIT_SVC         SERVICE_NAME,
+                                                               RECEIVED_AT
+  CRM_MPM_CALLBACK_AUDIT_LOG     IX_CALLBACK_AUDIT_STATUS      PROCESSING_STATUS
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 8 — SCHEDULER JOBS (3)
+═════════════════════════════════════════════════════════════════════
+
+  #   Job Name                Schedule          Procedure Called
+  ─── ─────────────────────── ───────────────── ───────────────────────────────
+  1   JOB_CRM_OUTBOUND_PUSH   Every hour :00    RUN_OUTBOUND_JOB
+                                                Reads all source views,
+                                                sends new records to APIC.
+
+  2   JOB_CRM_TIMEOUT         Every hour :20    RUN_TIMEOUT_JOB
+                                                Marks SENT records with no
+                                                callback as TIMEOUT.
+
+  3   JOB_CRM_RETRY           Every hour :40    RUN_RETRY_JOB
+                                                Re-sends FAILED/TIMEOUT
+                                                records within retry limit.
+
+  NOTE: All 3 jobs created DISABLED. Enable manually after SIT testing.
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 9 — GRANTS AND SYNONYMS
+═════════════════════════════════════════════════════════════════════
+
+  Grantee             Object                    Privilege
+  ─────────────────── ───────────────────────── ──────────
+  XXADIB_ESB_ARIBA    PKG_CRM_INTEGRATION       EXECUTE
+  XXADIB_ESB_ARIBA    CRM_MPM_CRM_INTEGRATION_LOG SELECT
+  XXADIB_ESB_ARIBA    CRM_MPM_API_REGISTRY      SELECT
+  XXADIB_ESB_ARIBA    CRM_MPM_CALLBACK_AUDIT_LOG SELECT
+
+  Synonym: XXADIB_ESB_ARIBA.PKG_CRM_INTEGRATION
+           → APPS.PKG_CRM_INTEGRATION
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 10 — 13 SERVICES CONFIGURED
+═════════════════════════════════════════════════════════════════════
+
+  #   Service Name               Source View                       Key Col
+  ─── ────────────────────────── ───────────────────────────────── ──────────
+  1   MD_PROJECT_CREATE          XXMPM_CRM_PROPERTY_CREATE_V       PROPERTY_ID
+  2   MD_PROJECT_UPDATE          XXMPM_CRM_PROPERTY_UPDATE_V       PROPERTY_ID
+  3   MD_BUILDING_CREATE         XXMPM_CRM_BUILDING_CREATE_FULL_V  BUILDING_ID
+  4   MD_BUILDING_UPDATE         XXMPM_CRM_BUILDING_UPDATE_FULL_V  UNIQUE_ID
+  5   MD_FLOOR_CREATE            XXMPM_CRM_FLOOR_CREATE_V          FLOOR_ID
+  6   MD_FLOOR_UPDATE            XXMPM_CRM_FLOOR_UPDATE_V          FLOOR_ID
+  7   MD_UNIT_CREATE             XXMPM_CRM_UNIT_CREATE_V           UNIT_ID
+  8   MD_UNIT_UPDATE             XXMPM_CRM_UNIT_UPDATE_V           UNIT_ID
+  9   MD_UNIT_STATUS_UPDATE      XXMPM_CRM_UNIT_STATUS_UPDATE_V    UNIT_ID
+  10  MD_BUILDING_UTILITY_CREATE XXMPM_CRM_BUILDING_UTILITIES_     UNIQUE_ID
+                                 CREATE_V
+  11  MD_BUILDING_UTILITY_UPDATE XXMPM_CRM_BUILDING_UTILITIES_     UNIQUE_ID
+                                 UPDATE_V
+  12  MD_TENANT_CREATE           XXMPM_CRM_ORCL_CREATE_TENANT_V    CUSTOMER_ID
+  13  (Unit Status Grouped)      TBD — pending functional team     TBD
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 11 — SUMMARY
+═════════════════════════════════════════════════════════════════════
+
+  Object Type          Count
+  ──────────────────── ─────
+  Tables               9
+  Package              1  (1 Spec + 1 Body)
+  Functions            3  (inside package)
+  Procedures           6  (inside package)
+  Views (our own)      2
+  Sequences            2
+  Indexes              7
+  Scheduler Jobs       3
+  Services Configured  13
+  ──────────────────── ─────
+  TOTAL OBJECTS        36
+
+
+═════════════════════════════════════════════════════════════════════
+SECTION 12 — WHAT TO UPDATE FOR SIT
+═════════════════════════════════════════════════════════════════════
+
+  Only these values change between DEV and SIT:
+
+  Table                    Column                Value to Update
+  ──────────────────────── ───────────────────── ──────────────────────────
+  CRM_MPM_API_CREDENTIALS  TOKEN_URL             SIT OAuth2 token URL
+  CRM_MPM_API_CREDENTIALS  CLIENT_ID             SIT client_id
+  CRM_MPM_API_CREDENTIALS  CLIENT_SECRET_REF     SIT client_secret
+  CRM_MPM_API_CREDENTIALS  WALLET_PATH           SIT wallet file path
+  CRM_MPM_API_CREDENTIALS  WALLET_PASSWORD       SIT wallet password
+  CRM_MPM_API_REGISTRY     APIC_ENDPOINT_URL     SIT APIC endpoint URL
+                                                  (all 13 rows)
+
+  Everything else is environment-independent:
+  - Package logic         unchanged
+  - Field mappings        unchanged
+  - Channel ID (817)      unchanged
+  - Record-type headers   unchanged
+  - Retry/timeout config  unchanged
+  - Scheduler schedule    unchanged
+
+=====================================================================
+END OF INVENTORY
+=====================================================================
