@@ -496,16 +496,18 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                 -- Parse response_timestamp into dedicated variable
                 v_ack_response_ts := JSON_VALUE(v_response, '$.response_timestamp');
 
-                -- LEG 1 status: 0000=accepted (LEG 2 will follow), 9999=header/auth error
+                -- LEG 1 status: 0000=accepted (LEG 2 will follow), 9999=record not created in PxRM
                 IF NVL(v_ack_status_code,'0000') = '0000' THEN
                     v_final_status  := 'SENT';
                     v_error_code    := NULL;
                     v_error_message := NULL;
                 ELSE
-                    -- status=9999: missing header, bad auth — no LEG 2 expected
+                    -- status=9999: CRM/PxRM failed to create the record — retryable
+                    -- NOTE: confirmed by CRM team email — 9999 = failure, record not created
+                    -- retry job must pick this up and re-push
                     v_final_status  := 'FAILED';
-                    v_error_code    := 'AUTH_OR_HEADER_ERROR';
-                    v_error_message := 'LEG1 rejected (header/auth): ' ||
+                    v_error_code    := 'FAILURE';
+                    v_error_message := 'PxRM rejected record (status=9999): ' ||
                                        v_ack_description || ' | ' || v_ack_message;
                 END IF;
             ELSIF v_http_resp.status_code IN (401, 403) THEN
@@ -968,6 +970,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             IF v_result_code = 'SUCCESS' OR v_cb_status = '0000' THEN
                 v_final_status := 'SUCCESS';
                 v_error_code   := 'SUCCESS';
+            ELSIF v_cb_status = '9999' AND v_result_code IS NULL THEN
+                -- status=9999 with no result_code — CRM failed, record not created
+                -- Confirmed by CRM team: 9999 = failure, must retry from Oracle
+                v_final_status := 'FAILED';
+                v_error_code   := 'FAILURE';
             ELSIF v_result_code = 'VALIDATION_FAILED' THEN
                 v_final_status := 'VALIDATION_FAILED';
                 v_error_code   := 'VALIDATION_FAILED';
