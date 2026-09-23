@@ -1,0 +1,111 @@
+-- =============================================================================
+-- CRM/PxRM Integration Error Codes
+-- Source: CRM team confirmed error codes with message fragments
+-- Run in: DEV / SIT / UAT / PROD
+-- =============================================================================
+-- IS_RETRYABLE logic:
+--   Y = technical/transient issue, retry may succeed
+--   N = data/config issue, retry will fail again until data is fixed
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'INVALID_JSON' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'INVALID_JSON',
+    'Payload is not valid JSON -- parse error in outbound data',
+    'N',
+    'not valid json',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'CONFIG_NOT_FOUND' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'CONFIG_NOT_FOUND',
+    'Integration master configuration missing in PxRM for entity',
+    'N',
+    'integration master configuration is missing',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'MANDATORY_FIELD_MISSING' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'MANDATORY_FIELD_MISSING',
+    'Mandatory field validation failed -- required field missing in payload',
+    'N',
+    'mandatory field validation failed',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'PRIMARY_FIELD_MISSING' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'PRIMARY_FIELD_MISSING',
+    'Primary key field not found in payload -- Oracle source key missing',
+    'N',
+    'primary field not found',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'LOOKUP_VALIDATION_FAILED' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'LOOKUP_VALIDATION_FAILED',
+    'Parent/related record not found in PxRM -- push parent record first',
+    'Y',
+    'related table reference could not be found',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'DUPLICATE_RECORD' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'DUPLICATE_RECORD',
+    'Record already exists in PxRM -- duplicate primary key value',
+    'N',
+    'duplicate record found',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'VALIDATION_FAILED' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'VALIDATION_FAILED',
+    'Unknown validation error -- fallback when no error code matched',
+    'N',
+    'fallback no match',
+    'Y');
+
+MERGE INTO CRM_MPM_ERROR_CODE_MASTER T
+USING (SELECT 'FAILURE' AS ERROR_CODE FROM DUAL) S
+ON (T.ERROR_CODE = S.ERROR_CODE)
+WHEN NOT MATCHED THEN INSERT
+    (ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, MATCHED_FRAGMENT, IS_ACTIVE)
+VALUES (
+    'FAILURE',
+    'Generic PostOperation failure -- unclassified CRM error',
+    'Y',
+    'generic postoperation catch',
+    'Y');
+
+COMMIT;
+
+-- Verify
+SELECT ERROR_CODE, ERROR_DESCRIPTION, IS_RETRYABLE, IS_ACTIVE
+FROM   CRM_MPM_ERROR_CODE_MASTER
+ORDER  BY ERROR_CODE;
