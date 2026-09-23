@@ -1021,6 +1021,23 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                 END;
             END IF;
 
+            -- ----------------------------------------------------------------
+            -- 9999 OVERRIDE: CRM team confirmed status=9999 means record was
+            -- NOT created in PxRM regardless of result_code.
+            -- Therefore ALL 9999 responses must be retried from Oracle EXCEPT
+            -- DUPLICATE_RECORD (record already exists — retry is pointless).
+            -- This override runs AFTER result_code mapping so error_code
+            -- still captures the specific reason for the failure.
+            -- ----------------------------------------------------------------
+            IF v_cb_status = '9999'
+               AND NVL(v_result_code,'x') != 'DUPLICATE_RECORD'
+               AND NVL(v_final_status,'x') != 'SUCCESS' THEN
+                v_final_status := 'FAILED';
+                -- Keep v_error_code as-is so specific reason is preserved
+                -- e.g. MANDATORY_FIELD_MISSING stays as error code
+                -- but FINAL_STATUS=FAILED means retry job picks it up
+            END IF;
+
             -- Store crm_entity_id and validation_errors via additional UPDATE
             UPDATE CRM_MPM_CRM_INTEGRATION_LOG
             SET CRM_ENTITY_ID          = v_crm_ent_id,
