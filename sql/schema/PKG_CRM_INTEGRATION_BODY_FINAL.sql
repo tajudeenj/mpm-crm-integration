@@ -955,10 +955,16 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             -- This is the authoritative field — top-level status (0000/9999) in LEG 2
             -- only indicates whether D365 processing succeeded or failed broadly.
             -- The specific reason is always in result_code.
-            -- CASE 1: result_code=SUCCESS          → FINAL_STATUS=SUCCESS
-            -- CASE 2: result_code=VALIDATION_FAILED → FINAL_STATUS=VALIDATION_FAILED
-            -- CASE 5: result_code=RECORD_NOT_FOUND  → FINAL_STATUS=RECORD_NOT_FOUND
-            -- CASE 6: result_code=DUPLICATE_RECORD  → FINAL_STATUS=DUPLICATE_RECORD
+            -- CASE 1: result_code=SUCCESS                → FINAL_STATUS=SUCCESS
+            -- CASE 2: result_code=VALIDATION_FAILED      → FINAL_STATUS=VALIDATION_FAILED
+            -- CASE 3: result_code=RECORD_NOT_FOUND       → FINAL_STATUS=RECORD_NOT_FOUND
+            -- CASE 4: result_code=DUPLICATE_RECORD       → FINAL_STATUS=DUPLICATE_RECORD
+            -- CASE 5: result_code=INVALID_JSON           → FINAL_STATUS=VALIDATION_FAILED
+            -- CASE 6: result_code=CONFIG_NOT_FOUND       → FINAL_STATUS=CRM_REJECTED
+            -- CASE 7: result_code=MANDATORY_FIELD_MISSING→ FINAL_STATUS=VALIDATION_FAILED
+            -- CASE 8: result_code=PRIMARY_FIELD_MISSING  → FINAL_STATUS=VALIDATION_FAILED
+            -- CASE 9: result_code=LOOKUP_VALIDATION_FAILED→ FINAL_STATUS=RECORD_NOT_FOUND
+            -- CASE 10:result_code=FAILURE                → FINAL_STATUS=FAILED
             IF v_result_code = 'SUCCESS' OR v_cb_status = '0000' THEN
                 v_final_status := 'SUCCESS';
                 v_error_code   := 'SUCCESS';
@@ -971,6 +977,31 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             ELSIF v_result_code = 'DUPLICATE_RECORD' THEN
                 v_final_status := 'DUPLICATE_RECORD';
                 v_error_code   := 'DUPLICATE_RECORD';
+            -- New CRM error codes confirmed by CRM team
+            ELSIF v_result_code = 'INVALID_JSON' THEN
+                -- Bad JSON payload -- data fix needed, no retry
+                v_final_status := 'VALIDATION_FAILED';
+                v_error_code   := 'INVALID_JSON';
+            ELSIF v_result_code = 'CONFIG_NOT_FOUND' THEN
+                -- PxRM integration master missing -- config fix needed
+                v_final_status := 'CRM_REJECTED';
+                v_error_code   := 'CONFIG_NOT_FOUND';
+            ELSIF v_result_code = 'MANDATORY_FIELD_MISSING' THEN
+                -- Required field absent in payload -- data fix needed
+                v_final_status := 'VALIDATION_FAILED';
+                v_error_code   := 'MANDATORY_FIELD_MISSING';
+            ELSIF v_result_code = 'PRIMARY_FIELD_MISSING' THEN
+                -- Oracle primary key missing in payload -- mapping fix needed
+                v_final_status := 'VALIDATION_FAILED';
+                v_error_code   := 'PRIMARY_FIELD_MISSING';
+            ELSIF v_result_code = 'LOOKUP_VALIDATION_FAILED' THEN
+                -- Parent/related record not found in PxRM -- retryable after parent pushed
+                v_final_status := 'RECORD_NOT_FOUND';
+                v_error_code   := 'LOOKUP_VALIDATION_FAILED';
+            ELSIF v_result_code = 'FAILURE' THEN
+                -- Generic PostOperation catch -- retryable
+                v_final_status := 'FAILED';
+                v_error_code   := 'FAILURE';
             ELSE
                 -- Unknown result_code — validate against master table
                 v_final_status := 'FAILED';
