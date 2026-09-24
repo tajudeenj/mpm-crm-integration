@@ -147,7 +147,7 @@ SELECT
     || '(CONFIG_ID,KEY_NAME,ENCRYPT_KEY,IS_ACTIVE) VALUES ('
     || CONFIG_ID || ','
     || '''' || KEY_NAME || ''','
-    || 'HEXTORAW(''' || RAWTOHEX(ENCRYPT_KEY) || '''),'
+    || 'HEXTORAW(''' || LOWER(RAWTOHEX(CAST(ENCRYPT_KEY AS RAW(32)))) || '''),'
     || '''' || IS_ACTIVE || ''');'
 FROM CRM_MPM_ENCRYPT_CONFIG;
 
@@ -214,7 +214,7 @@ SELECT
     || '''' || NVL(WALLET_PATH,'') || ''','
     || '''' || NVL(WALLET_PASSWORD,'') || ''','
     || CASE WHEN CLIENT_SECRET_ENCRYPTED IS NOT NULL
-            THEN 'HEXTORAW(''' || RAWTOHEX(CLIENT_SECRET_ENCRYPTED) || ''')'
+            THEN 'HEXTORAW(''' || LOWER(RAWTOHEX(CAST(CLIENT_SECRET_ENCRYPTED AS RAW(4000)))) || ''')' 
             ELSE 'NULL' END || ','
     || '''' || NVL(ENCRYPT_KEY_REF,'') || ''','
     || '''' || NVL(IS_ACTIVE,'Y') || ''') '
