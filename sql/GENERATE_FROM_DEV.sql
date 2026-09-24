@@ -26,13 +26,14 @@ SET TRIMSPOOL     ON
 SET SERVEROUTPUT  ON SIZE UNLIMITED
 
 -- =============================================================================
--- IMPORTANT -- BEFORE RUNNING OUTPUT ON SIT:
+-- HOW TO USE:
 -- Step 1: Run this script on DEV using F5 in SQL Developer
--- Step 2: Save output as SIT_FROM_DEV.sql
--- Step 3: Open SIT_FROM_DEV.sql in Notepad++
---         Find & Replace:  "APPS".   ->  (blank)
---         This removes schema prefix so objects create in SIT schema
+-- Step 2: Click Script Output tab at bottom
+-- Step 3: Right-click -> Save As -> SIT_FROM_DEV.sql
 -- Step 4: Run SIT_FROM_DEV.sql on SIT database
+--
+-- NOTE: "APPS". schema prefix is removed automatically in the script
+--       No manual find/replace needed
 -- =============================================================================
 
 -- Spool to file (update path as needed)
@@ -67,12 +68,22 @@ BEGIN
 END;
 /
 
--- Outputs plain CREATE SEQUENCE statements
--- Remove "APPS". schema prefix with Find+Replace before running on SIT
-SELECT DBMS_METADATA.GET_DDL('SEQUENCE', SEQUENCE_NAME)
-FROM USER_SEQUENCES
-WHERE SEQUENCE_NAME LIKE 'CRM_MPM%'
-ORDER BY SEQUENCE_NAME;
+DECLARE
+    v_ddl CLOB;
+BEGIN
+    FOR r IN (
+        SELECT SEQUENCE_NAME FROM USER_SEQUENCES
+        WHERE  SEQUENCE_NAME LIKE 'CRM_MPM%'
+        ORDER  BY SEQUENCE_NAME
+    ) LOOP
+        v_ddl := DBMS_METADATA.GET_DDL('SEQUENCE', r.SEQUENCE_NAME);
+        -- Remove schema prefix
+        v_ddl := REPLACE(v_ddl, '"APPS".', '');
+        DBMS_OUTPUT.PUT_LINE(v_ddl);
+        DBMS_OUTPUT.PUT_LINE('/');
+    END LOOP;
+END;
+/
 
 
 -- =============================================================================
@@ -81,12 +92,32 @@ ORDER BY SEQUENCE_NAME;
 PROMPT PROMPT --- TABLES ---
 PROMPT
 
--- Outputs plain CREATE TABLE statements
--- Remove "APPS". schema prefix with Find+Replace before running on SIT
-SELECT DBMS_METADATA.GET_DDL('TABLE', TABLE_NAME)
-FROM USER_TABLES
-WHERE TABLE_NAME LIKE 'CRM_MPM%'
-ORDER BY TABLE_NAME;
+DECLARE
+    v_ddl CLOB;
+BEGIN
+    -- Set transform params to strip storage/tablespace clauses
+    DBMS_METADATA.SET_TRANSFORM_PARAM(
+        DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',FALSE);
+    DBMS_METADATA.SET_TRANSFORM_PARAM(
+        DBMS_METADATA.SESSION_TRANSFORM,'TABLESPACE',FALSE);
+    DBMS_METADATA.SET_TRANSFORM_PARAM(
+        DBMS_METADATA.SESSION_TRANSFORM,'SEGMENT_ATTRIBUTES',FALSE);
+    DBMS_METADATA.SET_TRANSFORM_PARAM(
+        DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',TRUE);
+
+    FOR r IN (
+        SELECT TABLE_NAME FROM USER_TABLES
+        WHERE  TABLE_NAME LIKE 'CRM_MPM%'
+        ORDER  BY TABLE_NAME
+    ) LOOP
+        v_ddl := DBMS_METADATA.GET_DDL('TABLE', r.TABLE_NAME);
+        -- Remove schema prefix
+        v_ddl := REPLACE(v_ddl, '"APPS".', '');
+        DBMS_OUTPUT.PUT_LINE(v_ddl);
+        DBMS_OUTPUT.PUT_LINE('/');
+    END LOOP;
+END;
+/
 
 
 -- =============================================================================
@@ -95,14 +126,28 @@ ORDER BY TABLE_NAME;
 PROMPT PROMPT --- INDEXES ---
 PROMPT
 
--- Outputs plain CREATE INDEX statements
--- Remove "APPS". schema prefix with Find+Replace before running on SIT
-SELECT DBMS_METADATA.GET_DDL('INDEX', INDEX_NAME)
-FROM USER_INDEXES
-WHERE TABLE_NAME LIKE 'CRM_MPM%'
-AND   INDEX_TYPE != 'LOB'
-AND   INDEX_NAME NOT LIKE 'SYS_%'
-ORDER BY TABLE_NAME, INDEX_NAME;
+DECLARE
+    v_ddl CLOB;
+BEGIN
+    FOR r IN (
+        SELECT INDEX_NAME FROM USER_INDEXES
+        WHERE  TABLE_NAME LIKE 'CRM_MPM%'
+        AND    INDEX_TYPE != 'LOB'
+        AND    INDEX_NAME NOT LIKE 'SYS_%'
+        ORDER  BY TABLE_NAME, INDEX_NAME
+    ) LOOP
+        BEGIN
+            v_ddl := DBMS_METADATA.GET_DDL('INDEX', r.INDEX_NAME);
+            -- Remove schema prefix
+            v_ddl := REPLACE(v_ddl, '"APPS".', '');
+            DBMS_OUTPUT.PUT_LINE(v_ddl);
+            DBMS_OUTPUT.PUT_LINE('/');
+        EXCEPTION
+            WHEN OTHERS THEN NULL; -- skip system-generated indexes
+        END;
+    END LOOP;
+END;
+/
 
 
 -- =============================================================================
@@ -111,9 +156,15 @@ ORDER BY TABLE_NAME, INDEX_NAME;
 PROMPT PROMPT --- PACKAGE SPEC ---
 PROMPT
 
-SELECT DBMS_METADATA.GET_DDL('PACKAGE_SPEC','PKG_CRM_INTEGRATION')
-    || CHR(10) || '/'
-FROM DUAL;
+DECLARE
+    v_ddl CLOB;
+BEGIN
+    v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_SPEC','PKG_CRM_INTEGRATION');
+    v_ddl := REPLACE(v_ddl, '"APPS".', '');
+    DBMS_OUTPUT.PUT_LINE(v_ddl);
+    DBMS_OUTPUT.PUT_LINE('/');
+END;
+/
 
 
 -- =============================================================================
@@ -122,9 +173,15 @@ FROM DUAL;
 PROMPT PROMPT --- PACKAGE BODY ---
 PROMPT
 
-SELECT DBMS_METADATA.GET_DDL('PACKAGE_BODY','PKG_CRM_INTEGRATION')
-    || CHR(10) || '/'
-FROM DUAL;
+DECLARE
+    v_ddl CLOB;
+BEGIN
+    v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_BODY','PKG_CRM_INTEGRATION');
+    v_ddl := REPLACE(v_ddl, '"APPS".', '');
+    DBMS_OUTPUT.PUT_LINE(v_ddl);
+    DBMS_OUTPUT.PUT_LINE('/');
+END;
+/
 
 
 -- =============================================================================
