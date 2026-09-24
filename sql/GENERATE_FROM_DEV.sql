@@ -134,21 +134,33 @@ FROM DUAL;
 
 -- =============================================================================
 -- PART 6: DATA -- ALL CRM_MPM TABLES
--- Generated as MERGE statements -- safe to re-run
+-- Pure INSERT statements generated directly from DEV
+-- Tables deleted first for clean load
+-- =============================================================================
+
+PROMPT PROMPT --- DELETE ALL FOR CLEAN LOAD ---
+PROMPT DELETE FROM CRM_MPM_API_WATERMARK;
+PROMPT DELETE FROM CRM_MPM_API_FIELD_MAPPING;
+PROMPT DELETE FROM CRM_MPM_API_REGISTRY;
+PROMPT DELETE FROM CRM_MPM_API_CREDENTIALS;
+PROMPT DELETE FROM CRM_MPM_ERROR_CODE_MASTER;
+PROMPT DELETE FROM CRM_MPM_UNIQUE_ID_CONFIG;
+PROMPT DELETE FROM CRM_MPM_ENCRYPT_CONFIG;
+PROMPT COMMIT;
+PROMPT
+
 -- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_ENCRYPT_CONFIG ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_ENCRYPT_CONFIG T '
-    || 'USING (SELECT ' || CONFIG_ID || ' AS ID FROM DUAL) S '
-    || 'ON (T.CONFIG_ID=S.ID) '
-    || 'WHEN NOT MATCHED THEN INSERT '
-    || '(CONFIG_ID,KEY_NAME,ENCRYPT_KEY,IS_ACTIVE) VALUES ('
-    || CONFIG_ID || ','
-    || '''' || KEY_NAME || ''','
-    || 'HEXTORAW(''' || LOWER(RAWTOHEX(CAST(ENCRYPT_KEY AS RAW(32)))) || '''),'
-    || '''' || IS_ACTIVE || ''');'
+    'INSERT INTO CRM_MPM_ENCRYPT_CONFIG'
+    ||' (CONFIG_ID,KEY_NAME,ENCRYPT_KEY,IS_ACTIVE,CREATED_DATE) VALUES ('
+    || CONFIG_ID                                                        ||','
+    ||''''|| KEY_NAME                                                   ||''',' 
+    ||'HEXTORAW('''|| LOWER(RAWTOHEX(CAST(ENCRYPT_KEY AS RAW(32))))    ||'''),'
+    ||''''|| NVL(IS_ACTIVE,'Y')                                         ||''',' 
+    ||'SYSDATE);'
 FROM CRM_MPM_ENCRYPT_CONFIG;
 
 PROMPT COMMIT;
@@ -159,15 +171,14 @@ PROMPT PROMPT --- DATA: CRM_MPM_UNIQUE_ID_CONFIG ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_UNIQUE_ID_CONFIG T '
-    || 'USING (SELECT 1 AS ID FROM DUAL) S ON (T.CONFIG_ID=S.ID) '
-    || 'WHEN NOT MATCHED THEN INSERT '
-    || '(CONFIG_ID,CHANNEL_ID,TIMESTAMP_FORMAT,SEQUENCE_DIGITS,IS_ACTIVE) VALUES ('
-    || CONFIG_ID || ','
-    || '''' || CHANNEL_ID || ''','
-    || '''' || TIMESTAMP_FORMAT || ''','
-    || SEQUENCE_DIGITS || ','
-    || '''' || IS_ACTIVE || ''');'
+    'INSERT INTO CRM_MPM_UNIQUE_ID_CONFIG'
+    ||' (CONFIG_ID,CHANNEL_ID,TIMESTAMP_FORMAT,SEQUENCE_DIGITS,IS_ACTIVE,UPDATED_DATE) VALUES ('
+    || CONFIG_ID                                 ||','
+    ||''''|| CHANNEL_ID                          ||''','
+    ||''''|| TIMESTAMP_FORMAT                    ||''','
+    || SEQUENCE_DIGITS                           ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')                  ||''','
+    ||'SYSTIMESTAMP);'
 FROM CRM_MPM_UNIQUE_ID_CONFIG;
 
 PROMPT COMMIT;
@@ -178,15 +189,14 @@ PROMPT PROMPT --- DATA: CRM_MPM_ERROR_CODE_MASTER ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_ERROR_CODE_MASTER T '
-    || 'USING (SELECT ''' || ERROR_CODE || ''' AS C FROM DUAL) S '
-    || 'ON (T.ERROR_CODE=S.C) '
-    || 'WHEN NOT MATCHED THEN INSERT '
-    || '(ERROR_CODE,ERROR_DESCRIPTION,IS_RETRYABLE,IS_ACTIVE) VALUES ('
-    || '''' || ERROR_CODE || ''','
-    || '''' || REPLACE(ERROR_DESCRIPTION,'''','''''') || ''','
-    || '''' || NVL(IS_RETRYABLE,'N') || ''','
-    || '''' || NVL(IS_ACTIVE,'Y') || ''');'
+    'INSERT INTO CRM_MPM_ERROR_CODE_MASTER'
+    ||' (ERROR_CODE,ERROR_DESCRIPTION,IS_RETRYABLE,MATCHED_FRAGMENT,IS_ACTIVE,CREATED_DATE) VALUES ('
+    ||''''|| ERROR_CODE                                                          ||''','
+    ||''''|| REPLACE(NVL(ERROR_DESCRIPTION,''),'''','''''')                      ||''','
+    ||''''|| NVL(IS_RETRYABLE,'N')                                               ||''','
+    ||''''|| REPLACE(NVL(MATCHED_FRAGMENT,''),'''','''''')                       ||''','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                                  ||''','
+    ||'SYSTIMESTAMP);'
 FROM CRM_MPM_ERROR_CODE_MASTER
 ORDER BY ERROR_CODE;
 
@@ -198,29 +208,24 @@ PROMPT PROMPT --- DATA: CRM_MPM_API_CREDENTIALS ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_API_CREDENTIALS T '
-    || 'USING (SELECT ''' || CRED_CODE || ''' AS C FROM DUAL) S '
-    || 'ON (T.CRED_CODE=S.C) '
-    || 'WHEN NOT MATCHED THEN INSERT '
-    || '(CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,'
-    || 'GRANT_TYPE,SCOPE,WALLET_PATH,WALLET_PASSWORD,'
-    || 'CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,IS_ACTIVE) VALUES ('
-    || '''' || CRED_CODE         || ''','
-    || '''' || TOKEN_URL         || ''','
-    || '''' || CLIENT_ID         || ''','
-    || '''' || NVL(CLIENT_SECRET_REF,'') || ''','
-    || '''' || NVL(GRANT_TYPE,'client_credentials') || ''','
-    || '''' || NVL(SCOPE,'')     || ''','
-    || '''' || NVL(WALLET_PATH,'') || ''','
-    || '''' || NVL(WALLET_PASSWORD,'') || ''','
+    'INSERT INTO CRM_MPM_API_CREDENTIALS'
+    ||' (CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,GRANT_TYPE,SCOPE,'
+    ||'WALLET_PATH,WALLET_PASSWORD,CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
+    ||'IS_ACTIVE,CREATED_DATE) VALUES ('
+    ||''''|| REPLACE(NVL(CRED_CODE,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(TOKEN_URL,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(CLIENT_ID,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(CLIENT_SECRET_REF,''),'''','''''')     ||''','
+    ||''''|| NVL(GRANT_TYPE,'client_credentials')               ||''','
+    ||''''|| NVL(SCOPE,'')                                      ||''','
+    ||''''|| REPLACE(NVL(WALLET_PATH,''),'''','''''')           ||''','
+    ||''''|| REPLACE(NVL(WALLET_PASSWORD,''),'''','''''')       ||''','
     || CASE WHEN CLIENT_SECRET_ENCRYPTED IS NOT NULL
-            THEN 'HEXTORAW(''' || LOWER(RAWTOHEX(CAST(CLIENT_SECRET_ENCRYPTED AS RAW(4000)))) || ''')' 
-            ELSE 'NULL' END || ','
-    || '''' || NVL(ENCRYPT_KEY_REF,'') || ''','
-    || '''' || NVL(IS_ACTIVE,'Y') || ''') '
-    || 'WHEN MATCHED THEN UPDATE SET '
-    || 'TOKEN_URL=''' || TOKEN_URL || ''','
-    || 'UPDATED_DATE=SYSTIMESTAMP;'
+            THEN 'HEXTORAW('''||LOWER(RAWTOHEX(CAST(CLIENT_SECRET_ENCRYPTED AS RAW(4000))))||''')'
+            ELSE 'NULL' END                                     ||','
+    ||''''|| NVL(ENCRYPT_KEY_REF,'')                            ||''','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                 ||''','
+    ||'SYSTIMESTAMP);'
 FROM CRM_MPM_API_CREDENTIALS;
 
 PROMPT COMMIT;
@@ -231,47 +236,44 @@ PROMPT PROMPT --- DATA: CRM_MPM_API_REGISTRY ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_API_REGISTRY T '
-    || 'USING (SELECT ''' || SERVICE_NAME || ''' AS S FROM DUAL) X '
-    || 'ON (T.SERVICE_NAME=X.S) '
-    || 'WHEN NOT MATCHED THEN INSERT ('
-    || 'SERVICE_NAME,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,'
-    || 'SOURCE_VIEW,SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,'
-    || 'JSON_MAPPING_NAME,RECORD_TYPE_HDR,EVENT_CODE_HDR,'
-    || 'APIC_ENDPOINT_URL,HTTP_METHOD,APIC_API_VERSION,'
-    || 'CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,CALLBACK_STATUS_COL,'
-    || 'CALLBACK_REF_COL,POST_CALLBACK_PROC,'
-    || 'CRED_CODE,EXECUTION_ORDER,BATCH_SIZE,'
-    || 'MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,TIMEOUT_MINUTES,IS_ACTIVE) '
-    || 'VALUES ('
-    || '''' || SERVICE_NAME                         || ''','
-    || '''' || NVL(ENTITY_NAME,'')                  || ''','
-    || '''' || NVL(OPERATION_TYPE,'')               || ''','
-    || '''' || NVL(SOURCE_TYPE,'VIEW')               || ''','
-    || '''' || NVL(SOURCE_VIEW,'')                   || ''','
-    || '''' || NVL(SOURCE_PROC,'')                   || ''','
-    || '''' || NVL(SOURCE_FILTER_COL,'')             || ''','
-    || '''' || NVL(SOURCE_KEY_COL,'')                || ''','
-    || '''' || NVL(JSON_MAPPING_NAME,'')             || ''','
-    || '''' || NVL(RECORD_TYPE_HDR,'')               || ''','
-    || '''' || NVL(EVENT_CODE_HDR,'')                || ''','
-    || '''' || NVL(APIC_ENDPOINT_URL,'')             || ''','
-    || '''' || NVL(HTTP_METHOD,'POST')               || ''','
-    || '''' || NVL(APIC_API_VERSION,'1')             || ''','
-    || '''' || NVL(CALLBACK_TARGET_TABLE,'')         || ''','
-    || '''' || NVL(CALLBACK_KEY_COL,'')              || ''','
-    || '''' || NVL(CALLBACK_STATUS_COL,'')           || ''','
-    || '''' || NVL(CALLBACK_REF_COL,'')              || ''','
-    || '''' || NVL(POST_CALLBACK_PROC,'')            || ''','
-    || '''' || NVL(CRED_CODE,'')                     || ''','
-    || NVL(EXECUTION_ORDER,10)                       || ','
-    || NVL(BATCH_SIZE,100)                           || ','
-    || NVL(MAX_RETRY_COUNT,3)                        || ','
-    || NVL(RETRY_INTERVAL_MINUTES,30)               || ','
-    || NVL(TIMEOUT_MINUTES,60)                      || ','
-    || '''' || NVL(IS_ACTIVE,'Y')                    || ''') '
-    || 'WHEN MATCHED THEN UPDATE SET '
-    || 'UPDATED_DATE=SYSTIMESTAMP;'
+    'INSERT INTO CRM_MPM_API_REGISTRY'
+    ||' (REGISTRY_ID,SERVICE_NAME,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,'
+    ||'SOURCE_VIEW,SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,'
+    ||'JSON_MAPPING_NAME,RECORD_TYPE_HDR,EVENT_CODE_HDR,'
+    ||'APIC_ENDPOINT_URL,HTTP_METHOD,APIC_API_VERSION,'
+    ||'CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,CALLBACK_STATUS_COL,'
+    ||'CALLBACK_REF_COL,POST_CALLBACK_PROC,'
+    ||'CRED_CODE,EXECUTION_ORDER,BATCH_SIZE,'
+    ||'MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,TIMEOUT_MINUTES,'
+    ||'IS_ACTIVE,CREATED_DATE) VALUES ('
+    || REGISTRY_ID                                                          ||','
+    ||''''|| REPLACE(NVL(SERVICE_NAME,''),'''','''''')                      ||''','
+    ||''''|| REPLACE(NVL(ENTITY_NAME,''),'''','''''')                       ||''','
+    ||''''|| NVL(OPERATION_TYPE,'')                                         ||''','
+    ||''''|| NVL(SOURCE_TYPE,'VIEW')                                        ||''','
+    ||''''|| REPLACE(NVL(SOURCE_VIEW,''),'''','''''')                       ||''','
+    ||''''|| REPLACE(NVL(SOURCE_PROC,''),'''','''''')                       ||''','
+    ||''''|| REPLACE(NVL(SOURCE_FILTER_COL,''),'''','''''')                 ||''','
+    ||''''|| REPLACE(NVL(SOURCE_KEY_COL,''),'''','''''')                    ||''','
+    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                 ||''','
+    ||''''|| REPLACE(NVL(RECORD_TYPE_HDR,''),'''','''''')                   ||''','
+    ||''''|| REPLACE(NVL(EVENT_CODE_HDR,''),'''','''''')                    ||''','
+    ||''''|| REPLACE(NVL(APIC_ENDPOINT_URL,''),'''','''''')                 ||''','
+    ||''''|| NVL(HTTP_METHOD,'POST')                                        ||''','
+    ||''''|| NVL(APIC_API_VERSION,'1')                                      ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_TARGET_TABLE,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_KEY_COL,''),'''','''''')                  ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_STATUS_COL,''),'''','''''')               ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_REF_COL,''),'''','''''')                  ||''','
+    ||''''|| REPLACE(NVL(POST_CALLBACK_PROC,''),'''','''''')                ||''','
+    ||''''|| NVL(CRED_CODE,'')                                              ||''','
+    || NVL(EXECUTION_ORDER,10)                                              ||','
+    || NVL(BATCH_SIZE,100)                                                  ||','
+    || NVL(MAX_RETRY_COUNT,3)                                               ||','
+    || NVL(RETRY_INTERVAL_MINUTES,30)                                       ||','
+    || NVL(TIMEOUT_MINUTES,60)                                              ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                             ||''','
+    ||'SYSTIMESTAMP);'
 FROM CRM_MPM_API_REGISTRY
 ORDER BY EXECUTION_ORDER;
 
@@ -283,22 +285,19 @@ PROMPT PROMPT --- DATA: CRM_MPM_API_FIELD_MAPPING ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_API_FIELD_MAPPING T '
-    || 'USING (SELECT ''' || JSON_MAPPING_NAME || ''' AS M,'
-    || '''' || SOURCE_COLUMN || ''' AS C FROM DUAL) X '
-    || 'ON (T.JSON_MAPPING_NAME=X.M AND T.SOURCE_COLUMN=X.C) '
-    || 'WHEN NOT MATCHED THEN INSERT ('
-    || 'MAPPING_ID,JSON_MAPPING_NAME,SOURCE_COLUMN,JSON_PATH,'
-    || 'DATA_TYPE,DATE_FORMAT,IS_MANDATORY,DISPLAY_ORDER,IS_ACTIVE) VALUES ('
-    || 'CRM_MPM_MAPPING_SEQ.NEXTVAL,'
-    || '''' || JSON_MAPPING_NAME                    || ''','
-    || '''' || SOURCE_COLUMN                        || ''','
-    || '''' || NVL(JSON_PATH,'')                    || ''','
-    || '''' || NVL(DATA_TYPE,'VARCHAR2')             || ''','
-    || '''' || NVL(DATE_FORMAT,'')                   || ''','
-    || '''' || NVL(IS_MANDATORY,'N')                 || ''','
-    || NVL(DISPLAY_ORDER,10)                        || ','
-    || '''' || NVL(IS_ACTIVE,'Y')                    || ''');'
+    'INSERT INTO CRM_MPM_API_FIELD_MAPPING'
+    ||' (MAPPING_ID,JSON_MAPPING_NAME,SOURCE_COLUMN,JSON_PATH,'
+    ||'DATA_TYPE,DATE_FORMAT,IS_MANDATORY,DISPLAY_ORDER,IS_ACTIVE,CREATED_DATE) VALUES ('
+    || NVL(TO_CHAR(MAPPING_ID),'CRM_MPM_MAPPING_SEQ.NEXTVAL')              ||','
+    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                 ||''','
+    ||''''|| REPLACE(NVL(SOURCE_COLUMN,''),'''','''''')                     ||''','
+    ||''''|| REPLACE(NVL(JSON_PATH,''),'''','''''')                         ||''','
+    ||''''|| NVL(DATA_TYPE,'VARCHAR2')                                      ||''','
+    ||''''|| NVL(DATE_FORMAT,'')                                            ||''','
+    ||''''|| NVL(IS_MANDATORY,'N')                                          ||''','
+    || NVL(DISPLAY_ORDER,10)                                                ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                             ||''','
+    ||'SYSTIMESTAMP);'
 FROM CRM_MPM_API_FIELD_MAPPING
 WHERE IS_ACTIVE = 'Y'
 ORDER BY JSON_MAPPING_NAME, DISPLAY_ORDER;
@@ -311,19 +310,17 @@ PROMPT PROMPT --- DATA: CRM_MPM_API_WATERMARK ---
 PROMPT
 
 SELECT
-    'MERGE INTO CRM_MPM_API_WATERMARK T '
-    || 'USING (SELECT ' || W.REGISTRY_ID || ' AS R FROM DUAL) X '
-    || 'ON (T.REGISTRY_ID=X.R) '
-    || 'WHEN NOT MATCHED THEN INSERT '
-    || '(REGISTRY_ID,LAST_PROCESSED_TS,LAST_RUN_STATUS,LAST_RUN_RECORDS) VALUES ('
-    || W.REGISTRY_ID || ','
-    || 'TO_TIMESTAMP(''' || TO_CHAR(W.LAST_PROCESSED_TS,
-                                'DD-MON-YYYY HH24:MI:SS') || ''','
-    || '''DD-MON-YYYY HH24:MI:SS''),'
-    || '''' || NVL(W.LAST_RUN_STATUS,'INIT') || ''','
-    || NVL(W.LAST_RUN_RECORDS,0) || ');'
-FROM CRM_MPM_API_WATERMARK W
-ORDER BY W.REGISTRY_ID;
+    'INSERT INTO CRM_MPM_API_WATERMARK'
+    ||' (REGISTRY_ID,LAST_PROCESSED_TS,LAST_RUN_STATUS,LAST_RUN_RECORDS,UPDATED_DATE) VALUES ('
+    || REGISTRY_ID                                                            ||','
+    || CASE WHEN LAST_PROCESSED_TS IS NOT NULL
+            THEN 'TO_TIMESTAMP('''||TO_CHAR(LAST_PROCESSED_TS,'DD-MON-YYYY HH24:MI:SS')||''',''DD-MON-YYYY HH24:MI:SS'')'
+            ELSE 'SYSDATE-1' END                                              ||','
+    ||''''|| NVL(LAST_RUN_STATUS,'INIT')                                      ||''','
+    || NVL(LAST_RUN_RECORDS,0)                                                ||','
+    ||'SYSTIMESTAMP);'
+FROM CRM_MPM_API_WATERMARK
+ORDER BY REGISTRY_ID;
 
 PROMPT COMMIT;
 PROMPT
