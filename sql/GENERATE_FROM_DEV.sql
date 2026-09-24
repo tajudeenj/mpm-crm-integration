@@ -25,6 +25,16 @@ SET ECHO          OFF
 SET TRIMSPOOL     ON
 SET SERVEROUTPUT  ON SIZE UNLIMITED
 
+-- =============================================================================
+-- IMPORTANT -- BEFORE RUNNING OUTPUT ON SIT:
+-- Step 1: Run this script on DEV using F5 in SQL Developer
+-- Step 2: Save output as SIT_FROM_DEV.sql
+-- Step 3: Open SIT_FROM_DEV.sql in Notepad++
+--         Find & Replace:  "APPS".   ->  (blank)
+--         This removes schema prefix so objects create in SIT schema
+-- Step 4: Run SIT_FROM_DEV.sql on SIT database
+-- =============================================================================
+
 -- Spool to file (update path as needed)
 -- SPOOL /tmp/SIT_FROM_DEV.sql
 
@@ -57,14 +67,9 @@ BEGIN
 END;
 /
 
-SELECT
-    'BEGIN EXECUTE IMMEDIATE '''
-    || REPLACE(
-        REPLACE(DBMS_METADATA.GET_DDL('SEQUENCE', SEQUENCE_NAME), CHR(10), ' '),
-        '''', ''''''
-       )
-    || '''; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;'
-    || CHR(10) || '/'
+-- Outputs plain CREATE SEQUENCE statements
+-- Remove "APPS". schema prefix with Find+Replace before running on SIT
+SELECT DBMS_METADATA.GET_DDL('SEQUENCE', SEQUENCE_NAME)
 FROM USER_SEQUENCES
 WHERE SEQUENCE_NAME LIKE 'CRM_MPM%'
 ORDER BY SEQUENCE_NAME;
@@ -76,14 +81,9 @@ ORDER BY SEQUENCE_NAME;
 PROMPT PROMPT --- TABLES ---
 PROMPT
 
-SELECT
-    'BEGIN EXECUTE IMMEDIATE '''
-    || REPLACE(
-        REPLACE(DBMS_METADATA.GET_DDL('TABLE', TABLE_NAME), CHR(10), ' '),
-        '''', ''''''
-       )
-    || '''; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;'
-    || CHR(10) || '/'
+-- Outputs plain CREATE TABLE statements
+-- Remove "APPS". schema prefix with Find+Replace before running on SIT
+SELECT DBMS_METADATA.GET_DDL('TABLE', TABLE_NAME)
 FROM USER_TABLES
 WHERE TABLE_NAME LIKE 'CRM_MPM%'
 ORDER BY TABLE_NAME;
@@ -95,18 +95,13 @@ ORDER BY TABLE_NAME;
 PROMPT PROMPT --- INDEXES ---
 PROMPT
 
-SELECT
-    'BEGIN EXECUTE IMMEDIATE '''
-    || REPLACE(
-        REPLACE(DBMS_METADATA.GET_DDL('INDEX', INDEX_NAME), CHR(10), ' '),
-        '''', ''''''
-       )
-    || '''; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;'
-    || CHR(10) || '/'
+-- Outputs plain CREATE INDEX statements
+-- Remove "APPS". schema prefix with Find+Replace before running on SIT
+SELECT DBMS_METADATA.GET_DDL('INDEX', INDEX_NAME)
 FROM USER_INDEXES
 WHERE TABLE_NAME LIKE 'CRM_MPM%'
-AND   INDEX_TYPE  != 'LOB'
-AND   INDEX_NAME  NOT LIKE 'SYS_%'
+AND   INDEX_TYPE != 'LOB'
+AND   INDEX_NAME NOT LIKE 'SYS_%'
 ORDER BY TABLE_NAME, INDEX_NAME;
 
 
