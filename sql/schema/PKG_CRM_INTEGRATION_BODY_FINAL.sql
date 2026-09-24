@@ -1274,6 +1274,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             WHERE L.FINAL_STATUS    IN ('FAILED','TIMEOUT')
               AND L.RETRY_COUNT     <  R.MAX_RETRY_COUNT
               AND L.IS_FINAL_ATTEMPT = 'N'
+              AND L.FINAL_STATUS    NOT IN ('RETRY_IN_PROGRESS','RETRY_SENT','EXHAUSTED')
               AND (L.NEXT_RETRY_DATE IS NULL OR L.NEXT_RETRY_DATE <= SYSTIMESTAMP)
               AND R.IS_ACTIVE = 'Y'
         ) LOOP
@@ -1281,12 +1282,27 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             v_processed := v_processed + 1;
 
             BEGIN
+                -- Mark original row as final attempt BEFORE calling SEND_TO_APIC
                 IF rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT THEN
                     UPDATE CRM_MPM_CRM_INTEGRATION_LOG
                     SET IS_FINAL_ATTEMPT = 'Y'
                     WHERE LOG_ID = rec.LOG_ID;
                 END IF;
 
+                -- FIX: Update NEXT_RETRY_DATE on ORIGINAL row BEFORE calling SEND_TO_APIC
+                -- This prevents retry job from picking up same row again
+                -- even if SEND_TO_APIC takes time or the job runs concurrently
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET NEXT_RETRY_DATE  = SYSTIMESTAMP + (rec.RETRY_INTERVAL_MINUTES / 1440),
+                    RETRY_COUNT      = rec.RETRY_COUNT + 1,
+                    IS_FINAL_ATTEMPT = CASE WHEN rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT
+                                           THEN 'Y' ELSE 'N' END,
+                    FINAL_STATUS     = 'RETRY_IN_PROGRESS',
+                    UPDATED_DATE     = SYSTIMESTAMP
+                WHERE LOG_ID = rec.LOG_ID;
+                COMMIT;
+
+                -- SEND_TO_APIC creates a NEW log row for this attempt
                 SEND_TO_APIC(
                     p_registry_id          => rec.REGISTRY_ID,
                     p_key_value            => rec.SOURCE_RECORD_ID,
@@ -1295,26 +1311,35 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                     p_log_id_out           => v_log_id_new
                 );
 
-                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                SET NEXT_RETRY_DATE  = SYSTIMESTAMP + (rec.RETRY_INTERVAL_MINUTES / 1440),
-                    RETRY_COUNT      = rec.RETRY_COUNT + 1,
-                    IS_FINAL_ATTEMPT = CASE WHEN rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT
-                                           THEN 'Y' ELSE 'N' END
-                WHERE LOG_ID = v_log_id_new;
-
+                -- FIX: Check status on NEW row (the actual push attempt result)
                 SELECT FINAL_STATUS INTO v_status
                 FROM CRM_MPM_CRM_INTEGRATION_LOG
                 WHERE LOG_ID = v_log_id_new;
 
                 IF v_status = 'SENT' THEN
                     v_success := v_success + 1;
+                    -- Mark original row as RETRY_SENT so it is no longer picked up
+                    UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                    SET FINAL_STATUS = 'RETRY_SENT',
+                        UPDATED_DATE = SYSTIMESTAMP
+                    WHERE LOG_ID = rec.LOG_ID;
                 ELSE
                     v_failed := v_failed + 1;
+                    -- Push failed again — mark original row back to FAILED
+                    -- so it can be retried next interval (if retries remaining)
+                    -- or EXHAUSTED if max reached
                     IF rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT THEN
                         UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                        SET FINAL_STATUS = 'EXHAUSTED',
-                            ERROR_CODE   = 'EXHAUSTED'
-                        WHERE LOG_ID = v_log_id_new;
+                        SET FINAL_STATUS     = 'EXHAUSTED',
+                            ERROR_CODE       = 'EXHAUSTED',
+                            IS_FINAL_ATTEMPT = 'Y',
+                            UPDATED_DATE     = SYSTIMESTAMP
+                        WHERE LOG_ID = rec.LOG_ID;
+                    ELSE
+                        UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                        SET FINAL_STATUS = 'FAILED',
+                            UPDATED_DATE = SYSTIMESTAMP
+                        WHERE LOG_ID = rec.LOG_ID;
                     END IF;
                 END IF;
 
