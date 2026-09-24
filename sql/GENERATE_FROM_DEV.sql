@@ -206,72 +206,91 @@ PROMPT
 -- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_API_CREDENTIALS ---
 PROMPT
-
--- NOTE: CLIENT_SECRET_ENCRYPTED is RAW(4000) -- cannot use in SQL string concat
--- Using PL/SQL block to handle RAW column correctly
+-- Confirmed columns from USER_TAB_COLUMNS (18 columns):
+-- CRED_ID(NUMBER), CRED_CODE(VARCHAR2 50), TOKEN_URL(VARCHAR2 500),
+-- CLIENT_ID(VARCHAR2 200), CLIENT_SECRET_REF(VARCHAR2 200),
+-- SCOPE(VARCHAR2 200), GRANT_TYPE(VARCHAR2 50),
+-- TOKEN_CACHE_VALUE(VARCHAR2 4000), TOKEN_EXPIRY(TIMESTAMP),
+-- IS_ACTIVE(CHAR 1), CREATED_DATE(TIMESTAMP), UPDATED_DATE(TIMESTAMP),
+-- WALLET_PATH(VARCHAR2 200), WALLET_PASSWORD(VARCHAR2 200),
+-- CLIENT_SECRET_ENCRYPTED(BLOB), ENCRYPT_KEY_REF(VARCHAR2 100),
+-- WALLET_PASSWORD_ENC(BLOB), WALLET_PWD_KEY_REF(VARCHAR2 100)
+-- BLOB columns handled in PL/SQL -- cannot concat in SQL SELECT
 DECLARE
-    v_hex VARCHAR2(32767);
+    v_cs_hex  VARCHAR2(32767);
+    v_wp_hex  VARCHAR2(32767);
 BEGIN
     FOR r IN (
-        SELECT CRED_CODE, TOKEN_URL, CLIENT_ID, CLIENT_SECRET_REF,
-               GRANT_TYPE, SCOPE, WALLET_PATH, WALLET_PASSWORD,
-               CLIENT_SECRET_ENCRYPTED, ENCRYPT_KEY_REF,
-               IS_ACTIVE
-        FROM CRM_MPM_API_CREDENTIALS
+        SELECT CRED_ID, CRED_CODE, TOKEN_URL, CLIENT_ID,
+               CLIENT_SECRET_REF, SCOPE, GRANT_TYPE,
+               TOKEN_CACHE_VALUE, TOKEN_EXPIRY,
+               IS_ACTIVE, WALLET_PATH, WALLET_PASSWORD,
+               CLIENT_SECRET_ENCRYPTED,
+               ENCRYPT_KEY_REF,
+               WALLET_PASSWORD_ENC,
+               WALLET_PWD_KEY_REF
+        FROM   CRM_MPM_API_CREDENTIALS
     ) LOOP
-        IF r.CLIENT_SECRET_ENCRYPTED IS NOT NULL THEN
-            v_hex := LOWER(RAWTOHEX(r.CLIENT_SECRET_ENCRYPTED));
+        -- Convert BLOB to HEX string in PL/SQL (supports up to 32767)
+        IF r.CLIENT_SECRET_ENCRYPTED IS NOT NULL
+           AND DBMS_LOB.GETLENGTH(r.CLIENT_SECRET_ENCRYPTED) > 0 THEN
+            v_cs_hex := LOWER(RAWTOHEX(
+                DBMS_LOB.SUBSTR(r.CLIENT_SECRET_ENCRYPTED,
+                    DBMS_LOB.GETLENGTH(r.CLIENT_SECRET_ENCRYPTED), 1)));
         ELSE
-            v_hex := NULL;
+            v_cs_hex := NULL;
         END IF;
 
-        -- Two separate INSERT paths: one with encrypted secret, one without
-        IF v_hex IS NOT NULL THEN
-            EXECUTE IMMEDIATE
-                'INSERT INTO CRM_MPM_API_CREDENTIALS '
-                ||'(CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,'
-                ||'GRANT_TYPE,SCOPE,WALLET_PATH,WALLET_PASSWORD,'
-                ||'CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
-                ||'IS_ACTIVE,CREATED_DATE) VALUES '
-                ||'(:1,:2,:3,:4,:5,:6,:7,:8,HEXTORAW(:9),:10,:11,SYSTIMESTAMP)'
-            USING
-                r.CRED_CODE, r.TOKEN_URL, r.CLIENT_ID,
-                r.CLIENT_SECRET_REF,
-                NVL(r.GRANT_TYPE,'client_credentials'),
-                NVL(r.SCOPE,''),
-                NVL(r.WALLET_PATH,''),
-                NVL(r.WALLET_PASSWORD,''),
-                v_hex,
-                NVL(r.ENCRYPT_KEY_REF,''),
-                NVL(r.IS_ACTIVE,'Y');
+        IF r.WALLET_PASSWORD_ENC IS NOT NULL
+           AND DBMS_LOB.GETLENGTH(r.WALLET_PASSWORD_ENC) > 0 THEN
+            v_wp_hex := LOWER(RAWTOHEX(
+                DBMS_LOB.SUBSTR(r.WALLET_PASSWORD_ENC,
+                    DBMS_LOB.GETLENGTH(r.WALLET_PASSWORD_ENC), 1)));
         ELSE
-            EXECUTE IMMEDIATE
-                'INSERT INTO CRM_MPM_API_CREDENTIALS '
-                ||'(CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,'
-                ||'GRANT_TYPE,SCOPE,WALLET_PATH,WALLET_PASSWORD,'
-                ||'CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
-                ||'IS_ACTIVE,CREATED_DATE) VALUES '
-                ||'(:1,:2,:3,:4,:5,:6,:7,:8,NULL,:9,:10,SYSTIMESTAMP)'
-            USING
-                r.CRED_CODE, r.TOKEN_URL, r.CLIENT_ID,
-                r.CLIENT_SECRET_REF,
-                NVL(r.GRANT_TYPE,'client_credentials'),
-                NVL(r.SCOPE,''),
-                NVL(r.WALLET_PATH,''),
-                NVL(r.WALLET_PASSWORD,''),
-                NVL(r.ENCRYPT_KEY_REF,''),
-                NVL(r.IS_ACTIVE,'Y');
+            v_wp_hex := NULL;
         END IF;
 
-        DBMS_OUTPUT.PUT_LINE('Inserted: ' || r.CRED_CODE);
+        INSERT INTO CRM_MPM_API_CREDENTIALS (
+            CRED_ID, CRED_CODE, TOKEN_URL, CLIENT_ID,
+            CLIENT_SECRET_REF, SCOPE, GRANT_TYPE,
+            TOKEN_CACHE_VALUE, TOKEN_EXPIRY,
+            IS_ACTIVE, CREATED_DATE, UPDATED_DATE,
+            WALLET_PATH, WALLET_PASSWORD,
+            CLIENT_SECRET_ENCRYPTED,
+            ENCRYPT_KEY_REF,
+            WALLET_PASSWORD_ENC,
+            WALLET_PWD_KEY_REF)
+        VALUES (
+            r.CRED_ID,
+            r.CRED_CODE,
+            r.TOKEN_URL,
+            r.CLIENT_ID,
+            r.CLIENT_SECRET_REF,
+            r.SCOPE,
+            r.GRANT_TYPE,
+            r.TOKEN_CACHE_VALUE,
+            r.TOKEN_EXPIRY,
+            r.IS_ACTIVE,
+            SYSTIMESTAMP,
+            SYSTIMESTAMP,
+            r.WALLET_PATH,
+            r.WALLET_PASSWORD,
+            CASE WHEN v_cs_hex IS NOT NULL
+                 THEN TO_BLOB(HEXTORAW(v_cs_hex))
+                 ELSE NULL END,
+            r.ENCRYPT_KEY_REF,
+            CASE WHEN v_wp_hex IS NOT NULL
+                 THEN TO_BLOB(HEXTORAW(v_wp_hex))
+                 ELSE NULL END,
+            r.WALLET_PWD_KEY_REF
+        );
+
+        DBMS_OUTPUT.PUT_LINE('Inserted credential: ' || r.CRED_CODE);
     END LOOP;
     COMMIT;
     DBMS_OUTPUT.PUT_LINE('Done: CRM_MPM_API_CREDENTIALS');
 END;
 /
-
-PROMPT COMMIT;
-PROMPT
 
 -- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_API_REGISTRY ---
