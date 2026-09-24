@@ -207,165 +207,71 @@ PROMPT
 PROMPT PROMPT --- DATA: CRM_MPM_API_CREDENTIALS ---
 PROMPT
 
-SELECT
-    'INSERT INTO CRM_MPM_API_CREDENTIALS'
-    ||' (CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,GRANT_TYPE,SCOPE,'
-    ||'WALLET_PATH,WALLET_PASSWORD,CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
-    ||'IS_ACTIVE,CREATED_DATE) VALUES ('
-    ||''''|| REPLACE(NVL(CRED_CODE,''),'''','''''')             ||''','
-    ||''''|| REPLACE(NVL(TOKEN_URL,''),'''','''''')             ||''','
-    ||''''|| REPLACE(NVL(CLIENT_ID,''),'''','''''')             ||''','
-    ||''''|| REPLACE(NVL(CLIENT_SECRET_REF,''),'''','''''')     ||''','
-    ||''''|| NVL(GRANT_TYPE,'client_credentials')               ||''','
-    ||''''|| NVL(SCOPE,'')                                      ||''','
-    ||''''|| REPLACE(NVL(WALLET_PATH,''),'''','''''')           ||''','
-    ||''''|| REPLACE(NVL(WALLET_PASSWORD,''),'''','''''')       ||''','
-    || CASE WHEN CLIENT_SECRET_ENCRYPTED IS NOT NULL
-            THEN 'HEXTORAW('''||LOWER(RAWTOHEX(CLIENT_SECRET_ENCRYPTED))||''')'
-            ELSE 'NULL' END                                     ||','
-    ||''''|| NVL(ENCRYPT_KEY_REF,'')                            ||''','
-    ||''''|| NVL(IS_ACTIVE,'Y')                                 ||''','
-    ||'SYSTIMESTAMP);'
-FROM CRM_MPM_API_CREDENTIALS;
+-- NOTE: CLIENT_SECRET_ENCRYPTED is RAW(4000) -- cannot use in SQL string concat
+-- Using PL/SQL block to handle RAW column correctly
+DECLARE
+    v_hex VARCHAR2(32767);
+BEGIN
+    FOR r IN (
+        SELECT CRED_CODE, TOKEN_URL, CLIENT_ID, CLIENT_SECRET_REF,
+               GRANT_TYPE, SCOPE, WALLET_PATH, WALLET_PASSWORD,
+               CLIENT_SECRET_ENCRYPTED, ENCRYPT_KEY_REF,
+               IS_ACTIVE
+        FROM CRM_MPM_API_CREDENTIALS
+    ) LOOP
+        IF r.CLIENT_SECRET_ENCRYPTED IS NOT NULL THEN
+            v_hex := LOWER(RAWTOHEX(r.CLIENT_SECRET_ENCRYPTED));
+        ELSE
+            v_hex := NULL;
+        END IF;
+
+        -- Two separate INSERT paths: one with encrypted secret, one without
+        IF v_hex IS NOT NULL THEN
+            EXECUTE IMMEDIATE
+                'INSERT INTO CRM_MPM_API_CREDENTIALS '
+                ||'(CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,'
+                ||'GRANT_TYPE,SCOPE,WALLET_PATH,WALLET_PASSWORD,'
+                ||'CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
+                ||'IS_ACTIVE,CREATED_DATE) VALUES '
+                ||'(:1,:2,:3,:4,:5,:6,:7,:8,HEXTORAW(:9),:10,:11,SYSTIMESTAMP)'
+            USING
+                r.CRED_CODE, r.TOKEN_URL, r.CLIENT_ID,
+                r.CLIENT_SECRET_REF,
+                NVL(r.GRANT_TYPE,'client_credentials'),
+                NVL(r.SCOPE,''),
+                NVL(r.WALLET_PATH,''),
+                NVL(r.WALLET_PASSWORD,''),
+                v_hex,
+                NVL(r.ENCRYPT_KEY_REF,''),
+                NVL(r.IS_ACTIVE,'Y');
+        ELSE
+            EXECUTE IMMEDIATE
+                'INSERT INTO CRM_MPM_API_CREDENTIALS '
+                ||'(CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,'
+                ||'GRANT_TYPE,SCOPE,WALLET_PATH,WALLET_PASSWORD,'
+                ||'CLIENT_SECRET_ENCRYPTED,ENCRYPT_KEY_REF,'
+                ||'IS_ACTIVE,CREATED_DATE) VALUES '
+                ||'(:1,:2,:3,:4,:5,:6,:7,:8,NULL,:9,:10,SYSTIMESTAMP)'
+            USING
+                r.CRED_CODE, r.TOKEN_URL, r.CLIENT_ID,
+                r.CLIENT_SECRET_REF,
+                NVL(r.GRANT_TYPE,'client_credentials'),
+                NVL(r.SCOPE,''),
+                NVL(r.WALLET_PATH,''),
+                NVL(r.WALLET_PASSWORD,''),
+                NVL(r.ENCRYPT_KEY_REF,''),
+                NVL(r.IS_ACTIVE,'Y');
+        END IF;
+
+        DBMS_OUTPUT.PUT_LINE('Inserted: ' || r.CRED_CODE);
+    END LOOP;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Done: CRM_MPM_API_CREDENTIALS');
+END;
+/
 
 PROMPT COMMIT;
 PROMPT
 
 -- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_API_REGISTRY ---
-PROMPT
-
-SELECT
-    'INSERT INTO CRM_MPM_API_REGISTRY'
-    ||' (REGISTRY_ID,SERVICE_NAME,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,'
-    ||'SOURCE_VIEW,SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,'
-    ||'JSON_MAPPING_NAME,RECORD_TYPE_HDR,EVENT_CODE_HDR,'
-    ||'APIC_ENDPOINT_URL,HTTP_METHOD,APIC_API_VERSION,'
-    ||'CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,CALLBACK_STATUS_COL,'
-    ||'CALLBACK_REF_COL,POST_CALLBACK_PROC,'
-    ||'CRED_CODE,EXECUTION_ORDER,BATCH_SIZE,'
-    ||'MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,TIMEOUT_MINUTES,'
-    ||'IS_ACTIVE,CREATED_DATE) VALUES ('
-    || REGISTRY_ID                                                          ||','
-    ||''''|| REPLACE(NVL(SERVICE_NAME,''),'''','''''')                      ||''','
-    ||''''|| REPLACE(NVL(ENTITY_NAME,''),'''','''''')                       ||''','
-    ||''''|| NVL(OPERATION_TYPE,'')                                         ||''','
-    ||''''|| NVL(SOURCE_TYPE,'VIEW')                                        ||''','
-    ||''''|| REPLACE(NVL(SOURCE_VIEW,''),'''','''''')                       ||''','
-    ||''''|| REPLACE(NVL(SOURCE_PROC,''),'''','''''')                       ||''','
-    ||''''|| REPLACE(NVL(SOURCE_FILTER_COL,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(SOURCE_KEY_COL,''),'''','''''')                    ||''','
-    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(RECORD_TYPE_HDR,''),'''','''''')                   ||''','
-    ||''''|| REPLACE(NVL(EVENT_CODE_HDR,''),'''','''''')                    ||''','
-    ||''''|| REPLACE(NVL(APIC_ENDPOINT_URL,''),'''','''''')                 ||''','
-    ||''''|| NVL(HTTP_METHOD,'POST')                                        ||''','
-    ||''''|| NVL(APIC_API_VERSION,'1')                                      ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_TARGET_TABLE,''),'''','''''')             ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_KEY_COL,''),'''','''''')                  ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_STATUS_COL,''),'''','''''')               ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_REF_COL,''),'''','''''')                  ||''','
-    ||''''|| REPLACE(NVL(POST_CALLBACK_PROC,''),'''','''''')                ||''','
-    ||''''|| NVL(CRED_CODE,'')                                              ||''','
-    || NVL(EXECUTION_ORDER,10)                                              ||','
-    || NVL(BATCH_SIZE,100)                                                  ||','
-    || NVL(MAX_RETRY_COUNT,3)                                               ||','
-    || NVL(RETRY_INTERVAL_MINUTES,30)                                       ||','
-    || NVL(TIMEOUT_MINUTES,60)                                              ||','
-    ||''''|| NVL(IS_ACTIVE,'Y')                                             ||''','
-    ||'SYSTIMESTAMP);'
-FROM CRM_MPM_API_REGISTRY
-ORDER BY EXECUTION_ORDER;
-
-PROMPT COMMIT;
-PROMPT
-
--- =============================================================================
-PROMPT PROMPT --- DATA: CRM_MPM_API_FIELD_MAPPING ---
-PROMPT
-
-SELECT
-    'INSERT INTO CRM_MPM_API_FIELD_MAPPING'
-    ||' (MAPPING_ID,JSON_MAPPING_NAME,SOURCE_COLUMN,JSON_PATH,'
-    ||'DATA_TYPE,DATE_FORMAT,IS_MANDATORY,DISPLAY_ORDER,IS_ACTIVE,CREATED_DATE) VALUES ('
-    || NVL(TO_CHAR(MAPPING_ID),'CRM_MPM_MAPPING_SEQ.NEXTVAL')              ||','
-    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(SOURCE_COLUMN,''),'''','''''')                     ||''','
-    ||''''|| REPLACE(NVL(JSON_PATH,''),'''','''''')                         ||''','
-    ||''''|| NVL(DATA_TYPE,'VARCHAR2')                                      ||''','
-    ||''''|| NVL(DATE_FORMAT,'')                                            ||''','
-    ||''''|| NVL(IS_MANDATORY,'N')                                          ||''','
-    || NVL(DISPLAY_ORDER,10)                                                ||','
-    ||''''|| NVL(IS_ACTIVE,'Y')                                             ||''','
-    ||'SYSTIMESTAMP);'
-FROM CRM_MPM_API_FIELD_MAPPING
-WHERE IS_ACTIVE = 'Y'
-ORDER BY JSON_MAPPING_NAME, DISPLAY_ORDER;
-
-PROMPT COMMIT;
-PROMPT
-
--- =============================================================================
-PROMPT PROMPT --- DATA: CRM_MPM_API_WATERMARK ---
-PROMPT
-
-SELECT
-    'INSERT INTO CRM_MPM_API_WATERMARK'
-    ||' (REGISTRY_ID,LAST_PROCESSED_TS,LAST_RUN_STATUS,LAST_RUN_RECORDS,UPDATED_DATE) VALUES ('
-    || REGISTRY_ID                                                            ||','
-    || CASE WHEN LAST_PROCESSED_TS IS NOT NULL
-            THEN 'TO_TIMESTAMP('''||TO_CHAR(LAST_PROCESSED_TS,'DD-MON-YYYY HH24:MI:SS')||''',''DD-MON-YYYY HH24:MI:SS'')'
-            ELSE 'SYSDATE-1' END                                              ||','
-    ||''''|| NVL(LAST_RUN_STATUS,'INIT')                                      ||''','
-    || NVL(LAST_RUN_RECORDS,0)                                                ||','
-    ||'SYSTIMESTAMP);'
-FROM CRM_MPM_API_WATERMARK
-ORDER BY REGISTRY_ID;
-
-PROMPT COMMIT;
-PROMPT
-
--- =============================================================================
-PROMPT PROMPT --- SCHEDULER JOBS ---
-PROMPT
-
--- Drop and recreate all CRM_MPM scheduler jobs
-PROMPT BEGIN
-PROMPT   FOR j IN (SELECT JOB_NAME FROM USER_SCHEDULER_JOBS WHERE JOB_NAME LIKE 'CRM_MPM%') LOOP
-PROMPT     BEGIN DBMS_SCHEDULER.STOP_JOB(j.JOB_NAME,TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
-PROMPT     BEGIN DBMS_SCHEDULER.DROP_JOB(j.JOB_NAME,TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
-PROMPT   END LOOP;
-PROMPT END;
-PROMPT /
-
-SELECT
-    'BEGIN DBMS_SCHEDULER.CREATE_JOB('
-    || 'job_name=>''' || JOB_NAME || ''','
-    || 'job_type=>''' || JOB_TYPE || ''','
-    || 'job_action=>''' || JOB_ACTION || ''','
-    || 'repeat_interval=>''' || REPEAT_INTERVAL || ''','
-    || 'enabled=>' || CASE WHEN ENABLED='TRUE' THEN 'TRUE' ELSE 'FALSE' END || ','
-    || 'comments=>''' || NVL(COMMENTS,'') || '''); END;'
-    || CHR(10) || '/'
-FROM USER_SCHEDULER_JOBS
-WHERE JOB_NAME LIKE 'CRM_MPM%'
-ORDER BY JOB_NAME;
-
-PROMPT COMMIT;
-PROMPT
-
--- =============================================================================
-PROMPT PROMPT --- VERIFICATION ---
-PROMPT
-PROMPT SELECT TABLE_NAME, NUM_ROWS FROM USER_TABLES WHERE TABLE_NAME LIKE 'CRM_MPM%' ORDER BY TABLE_NAME;
-PROMPT SELECT SEQUENCE_NAME FROM USER_SEQUENCES WHERE SEQUENCE_NAME LIKE 'CRM_MPM%' ORDER BY 1;
-PROMPT SELECT INDEX_NAME, TABLE_NAME FROM USER_INDEXES WHERE TABLE_NAME LIKE 'CRM_MPM%' ORDER BY 1;
-PROMPT SELECT OBJECT_NAME, OBJECT_TYPE, STATUS FROM USER_OBJECTS WHERE OBJECT_NAME='PKG_CRM_INTEGRATION';
-PROMPT SELECT JOB_NAME, ENABLED, STATE FROM USER_SCHEDULER_JOBS WHERE JOB_NAME LIKE 'CRM_MPM%';
-PROMPT
-
--- SPOOL OFF
-
-PROMPT -- =================================================================
-PROMPT -- END OF GENERATED SCRIPT
-PROMPT -- =================================================================
