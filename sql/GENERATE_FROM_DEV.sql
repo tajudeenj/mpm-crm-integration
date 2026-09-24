@@ -133,22 +133,36 @@ FROM DUAL;
 
 
 -- =============================================================================
+-- =============================================================================
 -- PART 6: DATA -- ALL CRM_MPM TABLES
--- Pure INSERT statements generated directly from DEV
--- Tables deleted first for clean load
+-- Based on EXACT columns from USER_TAB_COLUMNS on DEV database
+-- Pure INSERT statements -- tables deleted first for clean load
 -- =============================================================================
 
-PROMPT PROMPT --- DELETE ALL FOR CLEAN LOAD ---
+PROMPT PROMPT --- DELETE ALL TABLES FOR CLEAN LOAD ---
+PROMPT -- Delete in FK-safe order
+PROMPT DELETE FROM CRM_MPM_CRM_INTEGRATION_LOG_DETAIL;
+PROMPT DELETE FROM CRM_MPM_CRM_INTEGRATION_LOG;
 PROMPT DELETE FROM CRM_MPM_API_WATERMARK;
 PROMPT DELETE FROM CRM_MPM_API_FIELD_MAPPING;
+PROMPT DELETE FROM CRM_MPM_OUTBOUND_STAGING;
+PROMPT DELETE FROM CRM_MPM_JOB_RUN_HISTORY;
+PROMPT DELETE FROM CRM_MPM_CALLBACK_AUDIT_LOG;
 PROMPT DELETE FROM CRM_MPM_API_REGISTRY;
 PROMPT DELETE FROM CRM_MPM_API_CREDENTIALS;
 PROMPT DELETE FROM CRM_MPM_ERROR_CODE_MASTER;
+PROMPT DELETE FROM CRM_MPM_CONFIG_STORE;
+PROMPT DELETE FROM CRM_MPM_CONFIG_AUDIT;
 PROMPT DELETE FROM CRM_MPM_UNIQUE_ID_CONFIG;
 PROMPT DELETE FROM CRM_MPM_ENCRYPT_CONFIG;
 PROMPT COMMIT;
 PROMPT
 
+-- =============================================================================
+-- TABLE: CRM_MPM_ENCRYPT_CONFIG
+-- Columns: CONFIG_ID(NUMBER), KEY_NAME(VARCHAR2 50), ENCRYPT_KEY(RAW 32),
+--          IS_ACTIVE(CHAR 1), CREATED_DATE(DATE)
+-- RAW(32) handled with HEXTORAW
 -- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_ENCRYPT_CONFIG ---
 PROMPT
@@ -156,10 +170,10 @@ PROMPT
 SELECT
     'INSERT INTO CRM_MPM_ENCRYPT_CONFIG'
     ||' (CONFIG_ID,KEY_NAME,ENCRYPT_KEY,IS_ACTIVE,CREATED_DATE) VALUES ('
-    || CONFIG_ID                                                        ||','
-    ||''''|| KEY_NAME                                                   ||''',' 
-    ||'HEXTORAW('''|| LOWER(RAWTOHEX(CAST(ENCRYPT_KEY AS RAW(32))))    ||'''),'
-    ||''''|| NVL(IS_ACTIVE,'Y')                                         ||''',' 
+    || CONFIG_ID                                                    ||','
+    ||''''|| KEY_NAME                                               ||''','
+    ||'HEXTORAW('''|| LOWER(RAWTOHEX(ENCRYPT_KEY))                 ||'''),'
+    ||''''|| NVL(IS_ACTIVE,'Y')                                     ||''','
     ||'SYSDATE);'
 FROM CRM_MPM_ENCRYPT_CONFIG;
 
@@ -167,17 +181,23 @@ PROMPT COMMIT;
 PROMPT
 
 -- =============================================================================
+-- TABLE: CRM_MPM_UNIQUE_ID_CONFIG
+-- Columns: CONFIG_ID(NUMBER), CHANNEL_ID(VARCHAR2 10),
+--          TIMESTAMP_FORMAT(VARCHAR2 50), SEQUENCE_DIGITS(NUMBER),
+--          IS_ACTIVE(VARCHAR2 1), UPDATED_DATE(TIMESTAMP)
+-- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_UNIQUE_ID_CONFIG ---
 PROMPT
 
 SELECT
     'INSERT INTO CRM_MPM_UNIQUE_ID_CONFIG'
-    ||' (CONFIG_ID,CHANNEL_ID,TIMESTAMP_FORMAT,SEQUENCE_DIGITS,IS_ACTIVE,UPDATED_DATE) VALUES ('
-    || CONFIG_ID                                 ||','
-    ||''''|| CHANNEL_ID                          ||''','
-    ||''''|| TIMESTAMP_FORMAT                    ||''','
-    || SEQUENCE_DIGITS                           ||','
-    ||''''|| NVL(IS_ACTIVE,'Y')                  ||''','
+    ||' (CONFIG_ID,CHANNEL_ID,TIMESTAMP_FORMAT,SEQUENCE_DIGITS,IS_ACTIVE,UPDATED_DATE)'
+    ||' VALUES ('
+    || CONFIG_ID                             ||','
+    ||''''|| CHANNEL_ID                      ||''','
+    ||''''|| TIMESTAMP_FORMAT                ||''','
+    || SEQUENCE_DIGITS                       ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')              ||''','
     ||'SYSTIMESTAMP);'
 FROM CRM_MPM_UNIQUE_ID_CONFIG;
 
@@ -185,18 +205,21 @@ PROMPT COMMIT;
 PROMPT
 
 -- =============================================================================
+-- TABLE: CRM_MPM_ERROR_CODE_MASTER
+-- Columns: ERROR_CODE(VARCHAR2 30), ERROR_CATEGORY(VARCHAR2 30),
+--          ERROR_DESCRIPTION(VARCHAR2 400), IS_RETRYABLE(CHAR 1)
+-- NOTE: No MATCHED_FRAGMENT, IS_ACTIVE, CREATED_DATE columns in actual table
+-- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_ERROR_CODE_MASTER ---
 PROMPT
 
 SELECT
     'INSERT INTO CRM_MPM_ERROR_CODE_MASTER'
-    ||' (ERROR_CODE,ERROR_DESCRIPTION,IS_RETRYABLE,MATCHED_FRAGMENT,IS_ACTIVE,CREATED_DATE) VALUES ('
-    ||''''|| ERROR_CODE                                                          ||''','
-    ||''''|| REPLACE(NVL(ERROR_DESCRIPTION,''),'''','''''')                      ||''','
-    ||''''|| NVL(IS_RETRYABLE,'N')                                               ||''','
-    ||''''|| REPLACE(NVL(MATCHED_FRAGMENT,''),'''','''''')                       ||''','
-    ||''''|| NVL(IS_ACTIVE,'Y')                                                  ||''','
-    ||'SYSTIMESTAMP);'
+    ||' (ERROR_CODE,ERROR_CATEGORY,ERROR_DESCRIPTION,IS_RETRYABLE) VALUES ('
+    ||''''|| REPLACE(ERROR_CODE,'''','''''')                          ||''','
+    ||''''|| REPLACE(NVL(ERROR_CATEGORY,'GENERAL'),'''','''''')       ||''','
+    ||''''|| REPLACE(NVL(ERROR_DESCRIPTION,''),'''','''''')           ||''','
+    ||''''|| NVL(IS_RETRYABLE,'N')                                    ||''');'
 FROM CRM_MPM_ERROR_CODE_MASTER
 ORDER BY ERROR_CODE;
 
@@ -204,18 +227,13 @@ PROMPT COMMIT;
 PROMPT
 
 -- =============================================================================
+-- TABLE: CRM_MPM_API_CREDENTIALS (18 columns)
+-- BLOB columns: CLIENT_SECRET_ENCRYPTED, WALLET_PASSWORD_ENC
+-- Handled via PL/SQL block -- cannot use BLOB in SQL string concat
+-- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_API_CREDENTIALS ---
 PROMPT
--- Confirmed columns from USER_TAB_COLUMNS (18 columns):
--- CRED_ID(NUMBER), CRED_CODE(VARCHAR2 50), TOKEN_URL(VARCHAR2 500),
--- CLIENT_ID(VARCHAR2 200), CLIENT_SECRET_REF(VARCHAR2 200),
--- SCOPE(VARCHAR2 200), GRANT_TYPE(VARCHAR2 50),
--- TOKEN_CACHE_VALUE(VARCHAR2 4000), TOKEN_EXPIRY(TIMESTAMP),
--- IS_ACTIVE(CHAR 1), CREATED_DATE(TIMESTAMP), UPDATED_DATE(TIMESTAMP),
--- WALLET_PATH(VARCHAR2 200), WALLET_PASSWORD(VARCHAR2 200),
--- CLIENT_SECRET_ENCRYPTED(BLOB), ENCRYPT_KEY_REF(VARCHAR2 100),
--- WALLET_PASSWORD_ENC(BLOB), WALLET_PWD_KEY_REF(VARCHAR2 100)
--- BLOB columns handled in PL/SQL -- cannot concat in SQL SELECT
+
 DECLARE
     v_cs_hex  VARCHAR2(32767);
     v_wp_hex  VARCHAR2(32767);
@@ -225,13 +243,11 @@ BEGIN
                CLIENT_SECRET_REF, SCOPE, GRANT_TYPE,
                TOKEN_CACHE_VALUE, TOKEN_EXPIRY,
                IS_ACTIVE, WALLET_PATH, WALLET_PASSWORD,
-               CLIENT_SECRET_ENCRYPTED,
-               ENCRYPT_KEY_REF,
-               WALLET_PASSWORD_ENC,
-               WALLET_PWD_KEY_REF
+               CLIENT_SECRET_ENCRYPTED, ENCRYPT_KEY_REF,
+               WALLET_PASSWORD_ENC, WALLET_PWD_KEY_REF
         FROM   CRM_MPM_API_CREDENTIALS
     ) LOOP
-        -- Convert BLOB to HEX string in PL/SQL (supports up to 32767)
+        -- Read BLOB columns into PL/SQL VARCHAR2 via DBMS_LOB.SUBSTR
         IF r.CLIENT_SECRET_ENCRYPTED IS NOT NULL
            AND DBMS_LOB.GETLENGTH(r.CLIENT_SECRET_ENCRYPTED) > 0 THEN
             v_cs_hex := LOWER(RAWTOHEX(
@@ -256,36 +272,22 @@ BEGIN
             TOKEN_CACHE_VALUE, TOKEN_EXPIRY,
             IS_ACTIVE, CREATED_DATE, UPDATED_DATE,
             WALLET_PATH, WALLET_PASSWORD,
-            CLIENT_SECRET_ENCRYPTED,
-            ENCRYPT_KEY_REF,
-            WALLET_PASSWORD_ENC,
-            WALLET_PWD_KEY_REF)
+            CLIENT_SECRET_ENCRYPTED, ENCRYPT_KEY_REF,
+            WALLET_PASSWORD_ENC, WALLET_PWD_KEY_REF)
         VALUES (
-            r.CRED_ID,
-            r.CRED_CODE,
-            r.TOKEN_URL,
-            r.CLIENT_ID,
-            r.CLIENT_SECRET_REF,
-            r.SCOPE,
-            r.GRANT_TYPE,
-            r.TOKEN_CACHE_VALUE,
-            r.TOKEN_EXPIRY,
-            r.IS_ACTIVE,
-            SYSTIMESTAMP,
-            SYSTIMESTAMP,
-            r.WALLET_PATH,
-            r.WALLET_PASSWORD,
+            r.CRED_ID, r.CRED_CODE, r.TOKEN_URL, r.CLIENT_ID,
+            r.CLIENT_SECRET_REF, r.SCOPE, r.GRANT_TYPE,
+            r.TOKEN_CACHE_VALUE, r.TOKEN_EXPIRY,
+            r.IS_ACTIVE, SYSTIMESTAMP, SYSTIMESTAMP,
+            r.WALLET_PATH, r.WALLET_PASSWORD,
             CASE WHEN v_cs_hex IS NOT NULL
-                 THEN TO_BLOB(HEXTORAW(v_cs_hex))
-                 ELSE NULL END,
+                 THEN TO_BLOB(HEXTORAW(v_cs_hex)) ELSE NULL END,
             r.ENCRYPT_KEY_REF,
             CASE WHEN v_wp_hex IS NOT NULL
-                 THEN TO_BLOB(HEXTORAW(v_wp_hex))
-                 ELSE NULL END,
-            r.WALLET_PWD_KEY_REF
-        );
+                 THEN TO_BLOB(HEXTORAW(v_wp_hex)) ELSE NULL END,
+            r.WALLET_PWD_KEY_REF);
 
-        DBMS_OUTPUT.PUT_LINE('Inserted credential: ' || r.CRED_CODE);
+        DBMS_OUTPUT.PUT_LINE('Inserted: ' || r.CRED_CODE);
     END LOOP;
     COMMIT;
     DBMS_OUTPUT.PUT_LINE('Done: CRM_MPM_API_CREDENTIALS');
@@ -293,4 +295,234 @@ END;
 /
 
 -- =============================================================================
+-- TABLE: CRM_MPM_API_REGISTRY (29 columns)
+-- Columns: REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE, SOURCE_TYPE,
+--   SOURCE_VIEW, SOURCE_PROC, SOURCE_FILTER_COL, SOURCE_KEY_COL,
+--   JSON_MAPPING_NAME, APIC_ENDPOINT_URL, HTTP_METHOD, CRED_CODE,
+--   SERVICE_NAME, CALLBACK_TARGET_TABLE, CALLBACK_KEY_COL,
+--   CALLBACK_STATUS_COL, CALLBACK_REF_COL, POST_CALLBACK_PROC,
+--   TIMEOUT_MINUTES, MAX_RETRY_COUNT, RETRY_INTERVAL_MINUTES,
+--   IS_ACTIVE(CHAR), CREATED_DATE, UPDATED_DATE,
+--   APIC_API_VERSION, RECORD_TYPE_HDR, EVENT_CODE_HDR,
+--   BATCH_SIZE, EXECUTION_ORDER
+-- NOTE: No MANUAL_RETRY column in registry
+-- =============================================================================
 PROMPT PROMPT --- DATA: CRM_MPM_API_REGISTRY ---
+PROMPT
+
+SELECT
+    'INSERT INTO CRM_MPM_API_REGISTRY'
+    ||' (REGISTRY_ID,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,'
+    ||'SOURCE_VIEW,SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,'
+    ||'JSON_MAPPING_NAME,APIC_ENDPOINT_URL,HTTP_METHOD,CRED_CODE,'
+    ||'SERVICE_NAME,CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,'
+    ||'CALLBACK_STATUS_COL,CALLBACK_REF_COL,POST_CALLBACK_PROC,'
+    ||'TIMEOUT_MINUTES,MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,'
+    ||'IS_ACTIVE,CREATED_DATE,UPDATED_DATE,'
+    ||'APIC_API_VERSION,RECORD_TYPE_HDR,EVENT_CODE_HDR,'
+    ||'BATCH_SIZE,EXECUTION_ORDER) VALUES ('
+    || REGISTRY_ID                                                          ||','
+    ||''''|| REPLACE(NVL(ENTITY_NAME,''),'''','''''')                       ||''','
+    ||''''|| NVL(OPERATION_TYPE,'CREATE')                                   ||''','
+    ||''''|| NVL(SOURCE_TYPE,'VIEW')                                        ||''','
+    ||''''|| REPLACE(NVL(SOURCE_VIEW,''),'''','''''')                       ||''','
+    ||''''|| REPLACE(NVL(SOURCE_PROC,''),'''','''''')                       ||''','
+    ||''''|| REPLACE(NVL(SOURCE_FILTER_COL,''),'''','''''')                 ||''','
+    ||''''|| REPLACE(NVL(SOURCE_KEY_COL,''),'''','''''')                    ||''','
+    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                 ||''','
+    ||''''|| REPLACE(NVL(APIC_ENDPOINT_URL,''),'''','''''')                 ||''','
+    ||''''|| NVL(HTTP_METHOD,'POST')                                        ||''','
+    ||''''|| NVL(CRED_CODE,'')                                              ||''','
+    ||''''|| REPLACE(NVL(SERVICE_NAME,''),'''','''''')                      ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_TARGET_TABLE,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_KEY_COL,''),'''','''''')                  ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_STATUS_COL,''),'''','''''')               ||''','
+    ||''''|| REPLACE(NVL(CALLBACK_REF_COL,''),'''','''''')                  ||''','
+    ||''''|| REPLACE(NVL(POST_CALLBACK_PROC,''),'''','''''')                ||''','
+    || NVL(TIMEOUT_MINUTES,60)                                              ||','
+    || NVL(MAX_RETRY_COUNT,3)                                               ||','
+    || NVL(RETRY_INTERVAL_MINUTES,30)                                       ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                             ||''','
+    ||'SYSTIMESTAMP,'
+    ||'SYSTIMESTAMP,'
+    ||''''|| NVL(APIC_API_VERSION,'1')                                      ||''','
+    ||''''|| REPLACE(NVL(RECORD_TYPE_HDR,''),'''','''''')                   ||''','
+    ||''''|| REPLACE(NVL(EVENT_CODE_HDR,''),'''','''''')                    ||''','
+    || NVL(BATCH_SIZE,100)                                                  ||','
+    || NVL(EXECUTION_ORDER,10)                                              ||');'
+FROM CRM_MPM_API_REGISTRY
+ORDER BY EXECUTION_ORDER;
+
+PROMPT COMMIT;
+PROMPT
+
+-- =============================================================================
+-- TABLE: CRM_MPM_API_FIELD_MAPPING (9 columns)
+-- Columns: MAPPING_ID(NUMBER), JSON_MAPPING_NAME(VARCHAR2 100),
+--   SOURCE_COLUMN(VARCHAR2 128), JSON_PATH(VARCHAR2 200),
+--   DATA_TYPE(VARCHAR2 20), DATE_FORMAT(VARCHAR2 50),
+--   IS_MANDATORY(CHAR 1), DISPLAY_ORDER(NUMBER), IS_ACTIVE(CHAR 1)
+-- NOTE: No CREATED_DATE column in actual table
+-- =============================================================================
+PROMPT PROMPT --- DATA: CRM_MPM_API_FIELD_MAPPING ---
+PROMPT
+
+SELECT
+    'INSERT INTO CRM_MPM_API_FIELD_MAPPING'
+    ||' (MAPPING_ID,JSON_MAPPING_NAME,SOURCE_COLUMN,JSON_PATH,'
+    ||'DATA_TYPE,DATE_FORMAT,IS_MANDATORY,DISPLAY_ORDER,IS_ACTIVE) VALUES ('
+    || NVL(TO_CHAR(MAPPING_ID),'CRM_MPM_MAPPING_SEQ.NEXTVAL')      ||','
+    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')         ||''','
+    ||''''|| REPLACE(NVL(SOURCE_COLUMN,''),'''','''''')             ||''','
+    ||''''|| REPLACE(NVL(JSON_PATH,''),'''','''''')                 ||''','
+    ||''''|| NVL(DATA_TYPE,'VARCHAR2')                              ||''','
+    ||''''|| NVL(DATE_FORMAT,'')                                    ||''','
+    ||''''|| NVL(IS_MANDATORY,'N')                                  ||''','
+    || NVL(DISPLAY_ORDER,10)                                        ||','
+    ||''''|| NVL(IS_ACTIVE,'Y')                                     ||''');'
+FROM CRM_MPM_API_FIELD_MAPPING
+WHERE IS_ACTIVE = 'Y'
+ORDER BY JSON_MAPPING_NAME, DISPLAY_ORDER;
+
+PROMPT COMMIT;
+PROMPT
+
+-- =============================================================================
+-- TABLE: CRM_MPM_API_WATERMARK (5 columns)
+-- Columns: REGISTRY_ID(NUMBER), LAST_PROCESSED_TS(TIMESTAMP),
+--   LAST_RUN_STATUS(VARCHAR2 20), LAST_RUN_RECORDS(NUMBER),
+--   UPDATED_DATE(TIMESTAMP)
+-- =============================================================================
+PROMPT PROMPT --- DATA: CRM_MPM_API_WATERMARK ---
+PROMPT
+
+SELECT
+    'INSERT INTO CRM_MPM_API_WATERMARK'
+    ||' (REGISTRY_ID,LAST_PROCESSED_TS,LAST_RUN_STATUS,'
+    ||'LAST_RUN_RECORDS,UPDATED_DATE) VALUES ('
+    || REGISTRY_ID                                                              ||','
+    || CASE WHEN LAST_PROCESSED_TS IS NOT NULL
+            THEN 'TO_TIMESTAMP('''
+                 ||TO_CHAR(LAST_PROCESSED_TS,'DD-MON-YYYY HH24:MI:SS')
+                 ||''',''DD-MON-YYYY HH24:MI:SS'')'
+            ELSE 'SYSDATE-1' END                                                ||','
+    ||''''|| NVL(LAST_RUN_STATUS,'INIT')                                        ||''','
+    || NVL(LAST_RUN_RECORDS,0)                                                  ||','
+    ||'SYSTIMESTAMP);'
+FROM CRM_MPM_API_WATERMARK
+ORDER BY REGISTRY_ID;
+
+PROMPT COMMIT;
+PROMPT
+
+-- =============================================================================
+-- TABLE: CRM_MPM_CONFIG_STORE (10 columns)
+-- Columns: CONFIG_ID(NUMBER), KEY_NAME(VARCHAR2 100), KEY_VALUE_ENC(BLOB),
+--   CATEGORY(VARCHAR2 50), DESCRIPTION(VARCHAR2 200), OWNER_SYSTEM(VARCHAR2 100),
+--   IS_ACTIVE(CHAR 1), CREATED_DATE(DATE), UPDATED_DATE(DATE), CREATED_BY(VARCHAR2 100)
+-- BLOB handled in PL/SQL
+-- =============================================================================
+PROMPT PROMPT --- DATA: CRM_MPM_CONFIG_STORE ---
+PROMPT
+
+DECLARE
+    v_hex VARCHAR2(32767);
+BEGIN
+    FOR r IN (
+        SELECT CONFIG_ID, KEY_NAME, KEY_VALUE_ENC, CATEGORY,
+               DESCRIPTION, OWNER_SYSTEM, IS_ACTIVE,
+               CREATED_DATE, UPDATED_DATE, CREATED_BY
+        FROM CRM_MPM_CONFIG_STORE
+    ) LOOP
+        IF r.KEY_VALUE_ENC IS NOT NULL
+           AND DBMS_LOB.GETLENGTH(r.KEY_VALUE_ENC) > 0 THEN
+            v_hex := LOWER(RAWTOHEX(
+                DBMS_LOB.SUBSTR(r.KEY_VALUE_ENC,
+                    DBMS_LOB.GETLENGTH(r.KEY_VALUE_ENC), 1)));
+        ELSE
+            v_hex := NULL;
+        END IF;
+
+        INSERT INTO CRM_MPM_CONFIG_STORE (
+            CONFIG_ID, KEY_NAME, KEY_VALUE_ENC, CATEGORY,
+            DESCRIPTION, OWNER_SYSTEM, IS_ACTIVE,
+            CREATED_DATE, UPDATED_DATE, CREATED_BY)
+        VALUES (
+            r.CONFIG_ID, r.KEY_NAME,
+            CASE WHEN v_hex IS NOT NULL
+                 THEN TO_BLOB(HEXTORAW(v_hex)) ELSE NULL END,
+            r.CATEGORY, r.DESCRIPTION, r.OWNER_SYSTEM,
+            r.IS_ACTIVE, r.CREATED_DATE, r.UPDATED_DATE, r.CREATED_BY);
+
+        DBMS_OUTPUT.PUT_LINE('Inserted config: ' || r.KEY_NAME);
+    END LOOP;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Done: CRM_MPM_CONFIG_STORE');
+END;
+/
+
+-- =============================================================================
+-- TABLES WITH NO SEED DATA (runtime/transactional tables)
+-- CRM_MPM_CRM_INTEGRATION_LOG       -- runtime log
+-- CRM_MPM_CRM_INTEGRATION_LOG_DETAIL-- runtime detail
+-- CRM_MPM_CALLBACK_AUDIT_LOG        -- runtime audit
+-- CRM_MPM_JOB_RUN_HISTORY           -- runtime history
+-- CRM_MPM_OUTBOUND_STAGING          -- runtime staging
+-- CRM_MPM_CONFIG_AUDIT              -- runtime audit
+-- These are left empty on SIT -- data created when jobs run
+-- =============================================================================
+PROMPT PROMPT --- RUNTIME TABLES: No seed data needed ---
+PROMPT -- CRM_MPM_CRM_INTEGRATION_LOG, CRM_MPM_CALLBACK_AUDIT_LOG,
+PROMPT -- CRM_MPM_JOB_RUN_HISTORY, CRM_MPM_OUTBOUND_STAGING left empty
+PROMPT
+
+-- =============================================================================
+-- PART 7: SCHEDULER JOBS
+-- =============================================================================
+PROMPT PROMPT --- SCHEDULER JOBS ---
+PROMPT
+
+PROMPT BEGIN
+PROMPT   FOR j IN (SELECT JOB_NAME FROM USER_SCHEDULER_JOBS WHERE JOB_NAME LIKE 'CRM_MPM%') LOOP
+PROMPT     BEGIN DBMS_SCHEDULER.STOP_JOB(j.JOB_NAME,TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
+PROMPT     BEGIN DBMS_SCHEDULER.DROP_JOB(j.JOB_NAME,TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
+PROMPT   END LOOP;
+PROMPT END;
+PROMPT /
+
+SELECT
+    'BEGIN DBMS_SCHEDULER.CREATE_JOB('
+    ||'job_name=>'''  || JOB_NAME         || ''','
+    ||'job_type=>'''  || JOB_TYPE         || ''','
+    ||'job_action=>'''|| JOB_ACTION       || ''','
+    ||'repeat_interval=>'''||REPEAT_INTERVAL||''','
+    ||'enabled=>'|| CASE WHEN ENABLED='TRUE' THEN 'TRUE' ELSE 'FALSE' END ||','
+    ||'comments=>'''|| NVL(COMMENTS,'')   || '''); END;'
+    || CHR(10) || '/'
+FROM USER_SCHEDULER_JOBS
+WHERE JOB_NAME LIKE 'CRM_MPM%'
+ORDER BY JOB_NAME;
+
+PROMPT COMMIT;
+PROMPT
+
+-- =============================================================================
+-- PART 8: VERIFICATION
+-- =============================================================================
+PROMPT PROMPT --- VERIFICATION ---
+PROMPT
+
+PROMPT SELECT TABLE_NAME, NUM_ROWS FROM USER_TABLES WHERE TABLE_NAME LIKE 'CRM_MPM%' ORDER BY TABLE_NAME;
+PROMPT SELECT SEQUENCE_NAME, LAST_NUMBER FROM USER_SEQUENCES WHERE SEQUENCE_NAME LIKE 'CRM_MPM%' ORDER BY 1;
+PROMPT SELECT INDEX_NAME, TABLE_NAME, STATUS FROM USER_INDEXES WHERE TABLE_NAME LIKE 'CRM_MPM%' AND INDEX_NAME NOT LIKE 'SYS%' ORDER BY 1;
+PROMPT SELECT OBJECT_NAME, OBJECT_TYPE, STATUS FROM USER_OBJECTS WHERE OBJECT_NAME='PKG_CRM_INTEGRATION' ORDER BY 2;
+PROMPT SELECT JOB_NAME, ENABLED, STATE FROM USER_SCHEDULER_JOBS WHERE JOB_NAME LIKE 'CRM_MPM%' ORDER BY 1;
+PROMPT SELECT ERROR_CODE, IS_RETRYABLE FROM CRM_MPM_ERROR_CODE_MASTER ORDER BY ERROR_CODE;
+PROMPT SELECT SERVICE_NAME, IS_ACTIVE, EXECUTION_ORDER FROM CRM_MPM_API_REGISTRY ORDER BY EXECUTION_ORDER;
+PROMPT SELECT JSON_MAPPING_NAME, COUNT(*) AS FIELDS FROM CRM_MPM_API_FIELD_MAPPING GROUP BY JSON_MAPPING_NAME ORDER BY 1;
+PROMPT SELECT R.SERVICE_NAME, TO_CHAR(W.LAST_PROCESSED_TS,'DD-MON-YY HH24:MI') FROM CRM_MPM_API_WATERMARK W JOIN CRM_MPM_API_REGISTRY R ON R.REGISTRY_ID=W.REGISTRY_ID ORDER BY R.EXECUTION_ORDER;
+PROMPT
+
+PROMPT -- =================================================================
+PROMPT -- END OF GENERATED SCRIPT
+PROMPT -- =================================================================
