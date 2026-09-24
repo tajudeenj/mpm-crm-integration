@@ -221,7 +221,7 @@ SELECT
     ||''''|| REPLACE(NVL(WALLET_PATH,''),'''','''''')           ||''','
     ||''''|| REPLACE(NVL(WALLET_PASSWORD,''),'''','''''')       ||''','
     || CASE WHEN CLIENT_SECRET_ENCRYPTED IS NOT NULL
-            THEN 'HEXTORAW('''||LOWER(RAWTOHEX(CAST(CLIENT_SECRET_ENCRYPTED AS RAW(4000))))||''')'
+            THEN 'HEXTORAW('''||LOWER(RAWTOHEX(CLIENT_SECRET_ENCRYPTED))||''')'
             ELSE 'NULL' END                                     ||','
     ||''''|| NVL(ENCRYPT_KEY_REF,'')                            ||''','
     ||''''|| NVL(IS_ACTIVE,'Y')                                 ||''','
