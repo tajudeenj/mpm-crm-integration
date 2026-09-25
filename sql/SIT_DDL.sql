@@ -1,7 +1,6 @@
 -- =============================================================================
 -- ADIB MPM PROPERTIES -- CRM xRM INTEGRATION
 -- FILE : SIT_DDL.sql
--- DESC : DDL only -- Sequences, Tables, Indexes, Package Spec, Package Body
 -- Run on DEV first to generate output, then run output on SIT
 -- Author  : Tajudeen Jalaudin -- Senior Solution Architect, ADIB
 -- Date    : 24 September 2026
@@ -148,56 +147,6 @@ END;
 /
 
 -- =============================================================================
--- PART 4: PACKAGE SPEC
--- =============================================================================
-PROMPT -- =============================================================================
-PROMPT -- PART 4: PACKAGE SPEC
-PROMPT -- =============================================================================
-
-DECLARE
-    v_ddl  CLOB;
-    v_len  NUMBER;
-    v_pos  NUMBER := 1;
-    v_chunk VARCHAR2(255);
-BEGIN
-    v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_SPEC','PKG_CRM_INTEGRATION');
-    v_ddl := REPLACE(v_ddl, '"APPS".', '');
-    v_len := DBMS_LOB.GETLENGTH(v_ddl);
-    WHILE v_pos <= v_len LOOP
-        v_chunk := DBMS_LOB.SUBSTR(v_ddl, 255, v_pos);
-        DBMS_OUTPUT.PUT(v_chunk);
-        v_pos := v_pos + 255;
-    END LOOP;
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('/');
-END;
-/
-
--- =============================================================================
--- PART 5: PACKAGE BODY
--- =============================================================================
-PROMPT -- =============================================================================
-PROMPT -- PART 5: PACKAGE BODY
-PROMPT -- =============================================================================
-
-DECLARE
-    v_ddl  CLOB;
-    v_len  NUMBER;
-    v_pos  NUMBER := 1;
-    v_chunk VARCHAR2(255);
-BEGIN
-    v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_BODY','PKG_CRM_INTEGRATION');
-    v_ddl := REPLACE(v_ddl, '"APPS".', '');
-    v_len := DBMS_LOB.GETLENGTH(v_ddl);
-    WHILE v_pos <= v_len LOOP
-        v_chunk := DBMS_LOB.SUBSTR(v_ddl, 255, v_pos);
-        DBMS_OUTPUT.PUT(v_chunk);
-        v_pos := v_pos + 255;
-    END LOOP;
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('/');
-END;
-/
 
 SPOOL OFF
 
