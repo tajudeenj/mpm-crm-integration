@@ -111,4 +111,40 @@ AND   INDEX_TYPE != 'LOB'
 AND   INDEX_NAME NOT LIKE 'SYS_%'
 ORDER BY TABLE_NAME, INDEX_NAME;
 
+-- =============================================================================
+-- PART 4: SCHEDULER JOBS
+-- Generate CREATE_JOB statements from DEV to run on SIT
+-- =============================================================================
+PROMPT -- =============================================
+PROMPT -- PART 4: SCHEDULER JOBS
+PROMPT -- =============================================
+
+SELECT
+    'BEGIN' ||CHR(10)||
+    '  DBMS_SCHEDULER.CREATE_JOB (' ||CHR(10)||
+    '    job_name        => '''|| JOB_NAME                        ||''',' ||CHR(10)||
+    '    job_type        => '''|| JOB_TYPE                        ||''',' ||CHR(10)||
+    '    job_action      => '''|| REPLACE(JOB_ACTION,'''','''''') ||''',' ||CHR(10)||
+    '    start_date      => SYSTIMESTAMP,'                                 ||CHR(10)||
+    '    repeat_interval => '''|| REPEAT_INTERVAL                 ||''',' ||CHR(10)||
+    '    enabled         => FALSE,'                                        ||CHR(10)||
+    '    auto_drop       => FALSE,'                                        ||CHR(10)||
+    '    comments        => '''|| REPLACE(NVL(COMMENTS,''),'''','''''') ||''');' ||CHR(10)||
+    'END;' ||CHR(10)||
+    '/'
+FROM USER_SCHEDULER_JOBS
+WHERE JOB_NAME LIKE 'CRM_MPM%'
+ORDER BY JOB_NAME;
+
+PROMPT -- =============================================
+PROMPT -- Enable jobs after verifying package is valid
+PROMPT -- Uncomment lines below when ready
+PROMPT -- =============================================
+
+SELECT
+    '-- DBMS_SCHEDULER.ENABLE('''|| JOB_NAME ||''');'
+FROM USER_SCHEDULER_JOBS
+WHERE JOB_NAME LIKE 'CRM_MPM%'
+ORDER BY JOB_NAME;
+
 PROMPT -- END OF DDL SCRIPT
