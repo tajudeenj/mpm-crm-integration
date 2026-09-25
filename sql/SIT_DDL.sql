@@ -33,6 +33,7 @@ SELECT
     || CHR(10) || '/'
 FROM USER_SEQUENCES
 WHERE SEQUENCE_NAME LIKE 'CRM_MPM%'
+   OR SEQUENCE_NAME LIKE 'SEQ_CRM%'
 ORDER BY SEQUENCE_NAME;
 
 -- =============================================================================
