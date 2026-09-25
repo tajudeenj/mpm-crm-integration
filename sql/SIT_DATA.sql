@@ -144,31 +144,33 @@ PROMPT -- ======================================================================
 -- NOTE: CLIENT_SECRET_ENCRYPTED and WALLET_PASSWORD_ENC inserted as NULL
 -- After deployment run SIT_ENCRYPT_SECRET.sql on SIT to set encrypted values
 
-SELECT
-    'INSERT INTO CRM_MPM_API_CREDENTIALS'
-    ||' (CRED_CODE,TOKEN_URL,CLIENT_ID,'
-    ||'CLIENT_SECRET_REF,SCOPE,GRANT_TYPE,'
-    ||'IS_ACTIVE,CREATED_DATE,UPDATED_DATE,'
-    ||'WALLET_PATH,ENCRYPT_KEY_REF,WALLET_PWD_KEY_REF,'
-    ||'CLIENT_SECRET_ENCRYPTED,WALLET_PASSWORD_ENC) VALUES ('
-    ||''''|| REPLACE(NVL(CRED_CODE,''),'''','''''')           ||''','
-    ||''''|| REPLACE(NVL(TOKEN_URL,''),'''','''''')            ||''','
-    ||''''|| REPLACE(NVL(CLIENT_ID,''),'''','''''')            ||''','
-    ||''''|| REPLACE(NVL(CLIENT_SECRET_REF,''),'''','''''')    ||''','
-    ||''''|| REPLACE(NVL(SCOPE,''),'''','''''')                ||''','
-    ||''''|| REPLACE(NVL(GRANT_TYPE,'client_credentials'),'''','''''') ||''','
-    ||''''|| NVL(IS_ACTIVE,'Y')                               ||''','
-    ||'SYSTIMESTAMP,'
-    ||'SYSTIMESTAMP,'
-    ||''''|| REPLACE(NVL(WALLET_PATH,''),'''','''''')          ||''','
-    ||''''|| REPLACE(NVL(ENCRYPT_KEY_REF,''),'''','''''')      ||''','
-    ||''''|| REPLACE(NVL(WALLET_PWD_KEY_REF,''),'''','''''')   ||''','
-    ||'NULL,'  -- CLIENT_SECRET_ENCRYPTED -- set via SIT_ENCRYPT_SECRET.sql
-    ||'NULL);' -- WALLET_PASSWORD_ENC     -- set via SIT_ENCRYPT_SECRET.sql
-FROM CRM_MPM_API_CREDENTIALS
-ORDER BY CRED_CODE;
-
-SELECT 'COMMIT;' FROM DUAL;
+-- NOTE: Run this block in SQL*Plus to generate credential INSERTs
+-- One row at a time approach avoids bind array overflow
+BEGIN
+    FOR r IN (SELECT * FROM CRM_MPM_API_CREDENTIALS ORDER BY CRED_CODE) LOOP
+        DBMS_OUTPUT.PUT_LINE('INSERT INTO CRM_MPM_API_CREDENTIALS');
+        DBMS_OUTPUT.PUT_LINE('  (CRED_CODE,TOKEN_URL,CLIENT_ID,CLIENT_SECRET_REF,');
+        DBMS_OUTPUT.PUT_LINE('   SCOPE,GRANT_TYPE,IS_ACTIVE,CREATED_DATE,UPDATED_DATE,');
+        DBMS_OUTPUT.PUT_LINE('   WALLET_PATH,ENCRYPT_KEY_REF,WALLET_PWD_KEY_REF,');
+        DBMS_OUTPUT.PUT_LINE('   CLIENT_SECRET_ENCRYPTED,WALLET_PASSWORD_ENC) VALUES (');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CRED_CODE,''),'''','''''')         ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.TOKEN_URL,''),'''','''''')          ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CLIENT_ID,''),'''','''''')          ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CLIENT_SECRET_REF,''),'''','''''')  ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SCOPE,''),'''','''''')              ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.GRANT_TYPE,'client_credentials'),'''','''''') ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||NVL(r.IS_ACTIVE,'Y')                             ||''',');
+        DBMS_OUTPUT.PUT_LINE('  SYSTIMESTAMP,');
+        DBMS_OUTPUT.PUT_LINE('  SYSTIMESTAMP,');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.WALLET_PATH,''),'''','''''')        ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.ENCRYPT_KEY_REF,''),'''','''''')    ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.WALLET_PWD_KEY_REF,''),'''','''''') ||''',');
+        DBMS_OUTPUT.PUT_LINE('  NULL,');
+        DBMS_OUTPUT.PUT_LINE('  NULL);');
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('COMMIT;');
+END;
+/
 
 -- =============================================================================
 -- PART 5: CRM_MPM_API_REGISTRY
@@ -177,49 +179,50 @@ PROMPT -- ======================================================================
 PROMPT -- PART 5: CRM_MPM_API_REGISTRY
 PROMPT -- =============================================================================
 
-SELECT
-    'INSERT INTO CRM_MPM_API_REGISTRY'
-    ||' (REGISTRY_ID,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,'
-    ||'SOURCE_VIEW,SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,'
-    ||'JSON_MAPPING_NAME,APIC_ENDPOINT_URL,HTTP_METHOD,CRED_CODE,'
-    ||'SERVICE_NAME,CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,'
-    ||'CALLBACK_STATUS_COL,CALLBACK_REF_COL,POST_CALLBACK_PROC,'
-    ||'TIMEOUT_MINUTES,MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,'
-    ||'IS_ACTIVE,CREATED_DATE,UPDATED_DATE,APIC_API_VERSION,'
-    ||'RECORD_TYPE_HDR,EVENT_CODE_HDR,BATCH_SIZE,EXECUTION_ORDER) VALUES ('
-    || NVL(TO_CHAR(REGISTRY_ID),'NULL')                                   ||','
-    ||''''|| REPLACE(NVL(ENTITY_NAME,''),'''','''''')                      ||''','
-    ||''''|| REPLACE(NVL(OPERATION_TYPE,''),'''','''''')                   ||''','
-    ||''''|| REPLACE(NVL(SOURCE_TYPE,''),'''','''''')                      ||''','
-    ||''''|| REPLACE(NVL(SOURCE_VIEW,''),'''','''''')                      ||''','
-    ||''''|| REPLACE(NVL(SOURCE_PROC,''),'''','''''')                      ||''','
-    ||''''|| REPLACE(NVL(SOURCE_FILTER_COL,''),'''','''''')                ||''','
-    ||''''|| REPLACE(NVL(SOURCE_KEY_COL,''),'''','''''')                   ||''','
-    ||''''|| REPLACE(NVL(JSON_MAPPING_NAME,''),'''','''''')                ||''','
-    ||''''|| REPLACE(NVL(APIC_ENDPOINT_URL,''),'''','''''')                ||''','
-    ||''''|| REPLACE(NVL(HTTP_METHOD,'POST'),'''','''''')                  ||''','
-    ||''''|| REPLACE(NVL(CRED_CODE,''),'''','''''')                        ||''','
-    ||''''|| REPLACE(NVL(SERVICE_NAME,''),'''','''''')                     ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_TARGET_TABLE,''),'''','''''')            ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_KEY_COL,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_STATUS_COL,''),'''','''''')              ||''','
-    ||''''|| REPLACE(NVL(CALLBACK_REF_COL,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(POST_CALLBACK_PROC,''),'''','''''')               ||''','
-    || NVL(TO_CHAR(TIMEOUT_MINUTES),'30')                                  ||','
-    || NVL(TO_CHAR(MAX_RETRY_COUNT),'3')                                   ||','
-    || NVL(TO_CHAR(RETRY_INTERVAL_MINUTES),'5')                            ||','
-    ||''''|| NVL(IS_ACTIVE,'Y')                                            ||''','
-    ||'SYSDATE,'
-    ||'SYSDATE,'
-    ||''''|| REPLACE(NVL(APIC_API_VERSION,''),'''','''''')                 ||''','
-    ||''''|| REPLACE(NVL(RECORD_TYPE_HDR,''),'''','''''')                  ||''','
-    ||''''|| REPLACE(NVL(EVENT_CODE_HDR,''),'''','''''')                   ||''','
-    || NVL(TO_CHAR(BATCH_SIZE),'100')                                      ||','
-    || NVL(TO_CHAR(EXECUTION_ORDER),'10')                                  ||');'
-FROM CRM_MPM_API_REGISTRY
-ORDER BY EXECUTION_ORDER, REGISTRY_ID;
-
-SELECT 'COMMIT;' FROM DUAL;
+BEGIN
+    FOR r IN (SELECT * FROM CRM_MPM_API_REGISTRY ORDER BY EXECUTION_ORDER, REGISTRY_ID) LOOP
+        DBMS_OUTPUT.PUT_LINE('INSERT INTO CRM_MPM_API_REGISTRY');
+        DBMS_OUTPUT.PUT_LINE('  (REGISTRY_ID,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,SOURCE_VIEW,');
+        DBMS_OUTPUT.PUT_LINE('   SOURCE_PROC,SOURCE_FILTER_COL,SOURCE_KEY_COL,JSON_MAPPING_NAME,');
+        DBMS_OUTPUT.PUT_LINE('   APIC_ENDPOINT_URL,HTTP_METHOD,CRED_CODE,SERVICE_NAME,');
+        DBMS_OUTPUT.PUT_LINE('   CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL,CALLBACK_STATUS_COL,');
+        DBMS_OUTPUT.PUT_LINE('   CALLBACK_REF_COL,POST_CALLBACK_PROC,TIMEOUT_MINUTES,');
+        DBMS_OUTPUT.PUT_LINE('   MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,IS_ACTIVE,');
+        DBMS_OUTPUT.PUT_LINE('   CREATED_DATE,UPDATED_DATE,APIC_API_VERSION,');
+        DBMS_OUTPUT.PUT_LINE('   RECORD_TYPE_HDR,EVENT_CODE_HDR,BATCH_SIZE,EXECUTION_ORDER) VALUES (');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.REGISTRY_ID),'NULL')||',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.ENTITY_NAME,''),'''','''''')           ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.OPERATION_TYPE,''),'''','''''')        ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SOURCE_TYPE,''),'''','''''')           ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SOURCE_VIEW,''),'''','''''')           ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SOURCE_PROC,''),'''','''''')           ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SOURCE_FILTER_COL,''),'''','''''')     ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SOURCE_KEY_COL,''),'''','''''')        ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.JSON_MAPPING_NAME,''),'''','''''')     ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.APIC_ENDPOINT_URL,''),'''','''''')     ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.HTTP_METHOD,'POST'),'''','''''')       ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CRED_CODE,''),'''','''''')             ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.SERVICE_NAME,''),'''','''''')          ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CALLBACK_TARGET_TABLE,''),'''','''''') ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CALLBACK_KEY_COL,''),'''','''''')      ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CALLBACK_STATUS_COL,''),'''','''''')   ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.CALLBACK_REF_COL,''),'''','''''')      ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.POST_CALLBACK_PROC,''),'''','''''')    ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.TIMEOUT_MINUTES),'30')                   ||',');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.MAX_RETRY_COUNT),'3')                    ||',');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.RETRY_INTERVAL_MINUTES),'5')             ||',');
+        DBMS_OUTPUT.PUT_LINE('  '''||NVL(r.IS_ACTIVE,'Y')                                 ||''',');
+        DBMS_OUTPUT.PUT_LINE('  SYSDATE,');
+        DBMS_OUTPUT.PUT_LINE('  SYSDATE,');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.APIC_API_VERSION,''),'''','''''')      ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.RECORD_TYPE_HDR,''),'''','''''')       ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '''||REPLACE(NVL(r.EVENT_CODE_HDR,''),'''','''''')        ||''',');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.BATCH_SIZE),'100')                       ||',');
+        DBMS_OUTPUT.PUT_LINE('  '||NVL(TO_CHAR(r.EXECUTION_ORDER),'10')                   ||');');
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('COMMIT;');
+END;
+/
 
 -- PART 6: CRM_MPM_API_FIELD_MAPPING
 -- (MAPPING_ID excluded -- GENERATED ALWAYS AS IDENTITY)
