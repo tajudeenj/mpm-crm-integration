@@ -21,7 +21,7 @@ SET VERIFY        OFF
 SET HEADING       OFF
 SET ECHO          OFF
 SET TRIMSPOOL     ON
-SET SERVEROUTPUT  ON SIZE UNLIMITED
+SET SERVEROUTPUT  ON
 
 SPOOL C:\temp\SIT_DDL_output.sql
 
@@ -51,8 +51,18 @@ BEGIN
     ) LOOP
         v_ddl := DBMS_METADATA.GET_DDL('SEQUENCE', r.SEQUENCE_NAME);
         v_ddl := REPLACE(v_ddl, '"APPS".', '');
-        DBMS_OUTPUT.PUT_LINE(v_ddl);
-        DBMS_OUTPUT.PUT_LINE('/');
+        -- chunk output for large DDL
+        DECLARE v_len2 NUMBER; v_pos2 NUMBER := 1; v_ch VARCHAR2(255);
+        BEGIN
+            v_len2 := DBMS_LOB.GETLENGTH(v_ddl);
+            WHILE v_pos2 <= v_len2 LOOP
+                v_ch := DBMS_LOB.SUBSTR(v_ddl,255,v_pos2);
+                DBMS_OUTPUT.PUT(v_ch);
+                v_pos2 := v_pos2 + 255;
+            END LOOP;
+            DBMS_OUTPUT.PUT_LINE('');
+            DBMS_OUTPUT.PUT_LINE('/');
+        END;
     END LOOP;
 END;
 /
@@ -83,8 +93,18 @@ BEGIN
     ) LOOP
         v_ddl := DBMS_METADATA.GET_DDL('TABLE', r.TABLE_NAME);
         v_ddl := REPLACE(v_ddl, '"APPS".', '');
-        DBMS_OUTPUT.PUT_LINE(v_ddl);
-        DBMS_OUTPUT.PUT_LINE('/');
+        -- chunk output for large DDL
+        DECLARE v_len2 NUMBER; v_pos2 NUMBER := 1; v_ch VARCHAR2(255);
+        BEGIN
+            v_len2 := DBMS_LOB.GETLENGTH(v_ddl);
+            WHILE v_pos2 <= v_len2 LOOP
+                v_ch := DBMS_LOB.SUBSTR(v_ddl,255,v_pos2);
+                DBMS_OUTPUT.PUT(v_ch);
+                v_pos2 := v_pos2 + 255;
+            END LOOP;
+            DBMS_OUTPUT.PUT_LINE('');
+            DBMS_OUTPUT.PUT_LINE('/');
+        END;
     END LOOP;
 END;
 /
@@ -109,8 +129,17 @@ BEGIN
         BEGIN
             v_ddl := DBMS_METADATA.GET_DDL('INDEX', r.INDEX_NAME);
             v_ddl := REPLACE(v_ddl, '"APPS".', '');
-            DBMS_OUTPUT.PUT_LINE(v_ddl);
-            DBMS_OUTPUT.PUT_LINE('/');
+            DECLARE v_len2 NUMBER; v_pos2 NUMBER := 1; v_ch VARCHAR2(255);
+            BEGIN
+                v_len2 := DBMS_LOB.GETLENGTH(v_ddl);
+                WHILE v_pos2 <= v_len2 LOOP
+                    v_ch := DBMS_LOB.SUBSTR(v_ddl,255,v_pos2);
+                    DBMS_OUTPUT.PUT(v_ch);
+                    v_pos2 := v_pos2 + 255;
+                END LOOP;
+                DBMS_OUTPUT.PUT_LINE('');
+                DBMS_OUTPUT.PUT_LINE('/');
+            END;
         EXCEPTION
             WHEN OTHERS THEN NULL;
         END;
@@ -126,11 +155,20 @@ PROMPT -- PART 4: PACKAGE SPEC
 PROMPT -- =============================================================================
 
 DECLARE
-    v_ddl CLOB;
+    v_ddl  CLOB;
+    v_len  NUMBER;
+    v_pos  NUMBER := 1;
+    v_chunk VARCHAR2(255);
 BEGIN
     v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_SPEC','PKG_CRM_INTEGRATION');
     v_ddl := REPLACE(v_ddl, '"APPS".', '');
-    DBMS_OUTPUT.PUT_LINE(v_ddl);
+    v_len := DBMS_LOB.GETLENGTH(v_ddl);
+    WHILE v_pos <= v_len LOOP
+        v_chunk := DBMS_LOB.SUBSTR(v_ddl, 255, v_pos);
+        DBMS_OUTPUT.PUT(v_chunk);
+        v_pos := v_pos + 255;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('');
     DBMS_OUTPUT.PUT_LINE('/');
 END;
 /
@@ -143,11 +181,20 @@ PROMPT -- PART 5: PACKAGE BODY
 PROMPT -- =============================================================================
 
 DECLARE
-    v_ddl CLOB;
+    v_ddl  CLOB;
+    v_len  NUMBER;
+    v_pos  NUMBER := 1;
+    v_chunk VARCHAR2(255);
 BEGIN
     v_ddl := DBMS_METADATA.GET_DDL('PACKAGE_BODY','PKG_CRM_INTEGRATION');
     v_ddl := REPLACE(v_ddl, '"APPS".', '');
-    DBMS_OUTPUT.PUT_LINE(v_ddl);
+    v_len := DBMS_LOB.GETLENGTH(v_ddl);
+    WHILE v_pos <= v_len LOOP
+        v_chunk := DBMS_LOB.SUBSTR(v_ddl, 255, v_pos);
+        DBMS_OUTPUT.PUT(v_chunk);
+        v_pos := v_pos + 255;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('');
     DBMS_OUTPUT.PUT_LINE('/');
 END;
 /
