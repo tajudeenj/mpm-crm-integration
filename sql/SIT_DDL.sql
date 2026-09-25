@@ -7,7 +7,7 @@
 -- =============================================================================
 -- HOW TO USE:
 --   Step 1 : Run this file on DEV in SQL*Plus  -->  @SIT_DDL.sql
---   Step 2 : File written to C:\temp\SIT_DDL_output.sql automatically
+--   Step 2 : Copy Script Output and save as SIT_DDL_output.sql
 --   Step 3 : Run SIT_DDL_output.sql on SIT
 -- =============================================================================
 
@@ -21,20 +21,12 @@ SET HEADING       OFF
 SET ECHO          OFF
 SET TRIMSPOOL     ON
 
--- SPOOL handles the file directly -- no directory or grants needed
-SPOOL C:\temp\SIT_DDL_output.sql
-
-SELECT '-- Generated from DEV: ' || TO_CHAR(SYSDATE,'DD-MON-YYYY HH24:MI:SS') FROM DUAL;
-SELECT '-- Run this file on SIT database' FROM DUAL;
-SELECT 'SET DEFINE OFF;' FROM DUAL;
-SELECT 'WHENEVER SQLERROR CONTINUE;' FROM DUAL;
-
 -- =============================================================================
 -- PART 1: SEQUENCES
 -- =============================================================================
-SELECT '-- =============================================' FROM DUAL;
-SELECT '-- PART 1: SEQUENCES' FROM DUAL;
-SELECT '-- =============================================' FROM DUAL;
+PROMPT -- =============================================
+PROMPT -- PART 1: SEQUENCES
+PROMPT -- =============================================
 
 SELECT
     REPLACE(DBMS_METADATA.GET_DDL('SEQUENCE', SEQUENCE_NAME), '"APPS".', '')
@@ -44,37 +36,70 @@ WHERE SEQUENCE_NAME LIKE 'CRM_MPM%'
 ORDER BY SEQUENCE_NAME;
 
 -- =============================================================================
--- PART 2: TABLES
+-- PART 2: TABLES -- one by one so we can identify which table has error
 -- =============================================================================
-SELECT '-- =============================================' FROM DUAL;
-SELECT '-- PART 2: TABLES' FROM DUAL;
-SELECT '-- =============================================' FROM DUAL;
+PROMPT -- =============================================
+PROMPT -- PART 2: TABLES
+PROMPT -- =============================================
 
-BEGIN
-    DBMS_METADATA.SET_TRANSFORM_PARAM(
-        DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',FALSE);
-    DBMS_METADATA.SET_TRANSFORM_PARAM(
-        DBMS_METADATA.SESSION_TRANSFORM,'TABLESPACE',FALSE);
-    DBMS_METADATA.SET_TRANSFORM_PARAM(
-        DBMS_METADATA.SESSION_TRANSFORM,'SEGMENT_ATTRIBUTES',FALSE);
-    DBMS_METADATA.SET_TRANSFORM_PARAM(
-        DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',TRUE);
-END;
-/
+-- Set transform params (no PL/SQL block -- just plain calls)
+SELECT DBMS_METADATA.SET_TRANSFORM_PARAM(
+    DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',FALSE) FROM DUAL;
+SELECT DBMS_METADATA.SET_TRANSFORM_PARAM(
+    DBMS_METADATA.SESSION_TRANSFORM,'TABLESPACE',FALSE) FROM DUAL;
+SELECT DBMS_METADATA.SET_TRANSFORM_PARAM(
+    DBMS_METADATA.SESSION_TRANSFORM,'SEGMENT_ATTRIBUTES',FALSE) FROM DUAL;
+SELECT DBMS_METADATA.SET_TRANSFORM_PARAM(
+    DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',TRUE) FROM DUAL;
 
-SELECT
-    REPLACE(DBMS_METADATA.GET_DDL('TABLE', TABLE_NAME), '"APPS".', '')
-    || CHR(10) || '/'
-FROM USER_TABLES
-WHERE TABLE_NAME LIKE 'CRM_MPM%'
-ORDER BY TABLE_NAME;
+PROMPT -- TABLE: CRM_MPM_API_CREDENTIALS
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_API_CREDENTIALS'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_API_FIELD_MAPPING
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_API_FIELD_MAPPING'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_API_REGISTRY
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_API_REGISTRY'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_API_WATERMARK
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_API_WATERMARK'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_CALLBACK_AUDIT_LOG
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_CALLBACK_AUDIT_LOG'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_CONFIG_AUDIT
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_CONFIG_AUDIT'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_CONFIG_STORE
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_CONFIG_STORE'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_CRM_INTEGRATION_LOG
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_CRM_INTEGRATION_LOG'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_CRM_INTEGRATION_LOG_DETAIL
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_CRM_INTEGRATION_LOG_DETAIL'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_ENCRYPT_CONFIG
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_ENCRYPT_CONFIG'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_ERROR_CODE_MASTER
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_ERROR_CODE_MASTER'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_JOB_RUN_HISTORY
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_JOB_RUN_HISTORY'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_OUTBOUND_STAGING
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_OUTBOUND_STAGING'),'"APPS".','') || '/' FROM DUAL;
+
+PROMPT -- TABLE: CRM_MPM_UNIQUE_ID_CONFIG
+SELECT REPLACE(DBMS_METADATA.GET_DDL('TABLE','CRM_MPM_UNIQUE_ID_CONFIG'),'"APPS".','') || '/' FROM DUAL;
 
 -- =============================================================================
 -- PART 3: INDEXES
 -- =============================================================================
-SELECT '-- =============================================' FROM DUAL;
-SELECT '-- PART 3: INDEXES' FROM DUAL;
-SELECT '-- =============================================' FROM DUAL;
+PROMPT -- =============================================
+PROMPT -- PART 3: INDEXES
+PROMPT -- =============================================
 
 SELECT
     REPLACE(DBMS_METADATA.GET_DDL('INDEX', INDEX_NAME), '"APPS".', '')
@@ -85,8 +110,4 @@ AND   INDEX_TYPE != 'LOB'
 AND   INDEX_NAME NOT LIKE 'SYS_%'
 ORDER BY TABLE_NAME, INDEX_NAME;
 
-SELECT '-- END OF DDL SCRIPT' FROM DUAL;
-
-SPOOL OFF
-
-PROMPT Done. File saved to C:\temp\SIT_DDL_output.sql
+PROMPT -- END OF DDL SCRIPT
