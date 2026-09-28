@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PKG_CRM_INTEGRATION_BODY_FINAL</title>
+<style>
+body{background:#1e1e1e;color:#d4d4d4;font-family:Consolas,monospace;font-size:12.5px;margin:0;padding:0;}
+.hdr{background:#252526;padding:10px 16px;position:sticky;top:0;z-index:10;border-bottom:1px solid #444;display:flex;gap:16px;align-items:center;flex-wrap:wrap;}
+.hdr h2{color:#4ec9b0;margin:0;font-size:14px;}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;}
+.leg{padding:2px 8px;border-radius:3px;font-weight:bold;}
+.toc{background:#1e1e1e;padding:6px 16px;border-bottom:1px solid #333;display:flex;gap:8px;flex-wrap:wrap;}
+.toc a{color:#4fc1ff;font-size:11px;text-decoration:none;padding:2px 7px;background:#1e3a5f;border-radius:3px;}
+.toc a:hover{background:#264f78;}
+.row{display:flex;padding:0 6px;line-height:1.55;}
+.row:hover{background:#2a2d2e;}
+.ln{color:#606060;min-width:42px;user-select:none;text-align:right;padding-right:10px;border-right:1px solid #333;margin-right:8px;flex-shrink:0;}
+.code{white-space:pre;}
+.proc{background:#1a3050;}
+.proc .code{color:#9cdcfe;font-weight:bold;}
+.fix{background:#162616;}
+.fix .code{color:#4ec9b0;}
+.crit{background:#321212;}
+.crit .code{color:#f48771;font-weight:bold;}
+.cmt .code{color:#6a9955;}
+</style>
+</head>
+<body>
+<div class="hdr">
+<h2>PKG_CRM_INTEGRATION_BODY_FINAL.sql &mdash; ADIB MPM CRM xRM Integration &mdash; 1378 lines</h2>
+<div class="legend">
+<span class="leg" style="background:#1a3050;color:#9cdcfe;">PROCEDURE/FUNCTION</span>
+<span class="leg" style="background:#162616;color:#4ec9b0;">-- FIX (bug fix)</span>
+<span class="leg" style="background:#321212;color:#f48771;">CRITICAL (retry/9999/EXHAUSTED)</span>
+<span class="leg" style="color:#6a9955;">-- comment</span>
+</div>
+</div>
+<div class="toc">
+<span style="color:#858585;font-size:11px;">Jump:</span>
+<a href="#L25">GENERATE_UNIQUE_ID (L25)</a>
+<a href="#L63">GET_BEARER_TOKEN (L63)</a>
+<a href="#L158">BUILD_JSON_PAYLOAD (L158)</a>
+<a href="#L315">SEND_TO_APIC (L315)</a>
+<a href="#L592">RUN_OUTBOUND_JOB (L592)</a>
+<a href="#L764">PROCESS_CRM_CALLBACK (L764)</a>
+<a href="#L1025">9999 OVERRIDE (L1025)</a>
+<a href="#L1169">RUN_TIMEOUT_JOB (L1169)</a>
+<a href="#L1252">RUN_RETRY_JOB (L1252)</a>
+<a href="#L1292">RUNAWAY FIX (L1292)</a>
+</div>
+<div id="L1" class="row"><span class="ln">   1</span><span class="code">SET DEFINE OFF</span></div>
+<div id="L2" class="row"><span class="ln">   2</span><span class="code"></span></div>
+<div id="L3" class="row"><span class="ln">   3</span><span class="code">CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS</span></div>
+<div id="L4" class="row"><span class="ln">   4</span><span class="code"></span></div>
+<div id="L5" class="row"><span class="ln">   5</span><span class="code">    /* ====================================================================</span></div>
+<div id="L6" class="row"><span class="ln">   6</span><span class="code">       UTILITIES</span></div>
+<div id="L7" class="row"><span class="ln">   7</span><span class="code">       ==================================================================== */</span></div>
+<div id="L8" class="row"><span class="ln">   8</span><span class="code">    FUNCTION NEW_GUID RETURN VARCHAR2 IS</span></div>
+<div id="L9" class="row"><span class="ln">   9</span><span class="code">    BEGIN</span></div>
+<div id="L10" class="row"><span class="ln">  10</span><span class="code">        RETURN RAWTOHEX(SYS_GUID());</span></div>
+<div id="L11" class="row"><span class="ln">  11</span><span class="code">    END NEW_GUID;</span></div>
+<div id="L12" class="row"><span class="ln">  12</span><span class="code"></span></div>
+<div id="L13" class="row"><span class="ln">  13</span><span class="code"></span></div>
+<div id="L14" class="row"><span class="ln">  14</span><span class="code">    /* ====================================================================</span></div>
+<div id="L15" class="row"><span class="ln">  15</span><span class="code">       GENERATE_UNIQUE_ID</span></div>
+<div id="L16" class="row"><span class="ln">  16</span><span class="code">       Builds x-unique-id for the APIC header: &lt;channel_id&gt;&lt;timestamp&gt;&lt;seq&gt;</span></div>
+<div id="L17" class="row"><span class="ln">  17</span><span class="code">       Format driven entirely by CRM_MPM_UNIQUE_ID_CONFIG (single row) so</span></div>
+<div id="L18" class="row"><span class="ln">  18</span><span class="code">       the standard can change later without touching this package.</span></div>
+<div id="L19" class="row"><span class="ln">  19</span><span class="code">       Sequence portion comes from CRM_MPM_UNIQUE_ID_SEQ (DB sequence,</span></div>
+<div id="L20" class="row"><span class="ln">  20</span><span class="code">       CYCLE'd automatically — no manual reset needed, concurrency-safe</span></div>
+<div id="L21" class="row"><span class="ln">  21</span><span class="code">       across multiple sessions since Oracle sequences are atomic).</span></div>
+<div id="L22" class="row"><span class="ln">  22</span><span class="code">       Mirrors Java's UniqueIdGenerator exactly — same channel/format/width</span></div>
+<div id="L23" class="row"><span class="ln">  23</span><span class="code">       by default (814 / YYYYMMDDHH24MISSFF3 / 4 digits).</span></div>
+<div id="L24" class="row"><span class="ln">  24</span><span class="code">       ==================================================================== */</span></div>
+<div id="L25" class="row proc"><span class="ln">  25</span><span class="code">    FUNCTION GENERATE_UNIQUE_ID RETURN VARCHAR2 IS</span></div>
+<div id="L26" class="row"><span class="ln">  26</span><span class="code">        v_channel_id       VARCHAR2(10);</span></div>
+<div id="L27" class="row"><span class="ln">  27</span><span class="code">        v_timestamp_format VARCHAR2(50);</span></div>
+<div id="L28" class="row"><span class="ln">  28</span><span class="code">        v_sequence_digits  NUMBER;</span></div>
+<div id="L29" class="row"><span class="ln">  29</span><span class="code">        v_timestamp        VARCHAR2(50);</span></div>
+<div id="L30" class="row"><span class="ln">  30</span><span class="code">        v_seq              NUMBER;</span></div>
+<div id="L31" class="row"><span class="ln">  31</span><span class="code">        v_seq_padded       VARCHAR2(20);</span></div>
+<div id="L32" class="row"><span class="ln">  32</span><span class="code">    BEGIN</span></div>
+<div id="L33" class="row"><span class="ln">  33</span><span class="code">        SELECT CHANNEL_ID, TIMESTAMP_FORMAT, SEQUENCE_DIGITS</span></div>
+<div id="L34" class="row"><span class="ln">  34</span><span class="code">        INTO   v_channel_id, v_timestamp_format, v_sequence_digits</span></div>
+<div id="L35" class="row"><span class="ln">  35</span><span class="code">        FROM   CRM_MPM_UNIQUE_ID_CONFIG</span></div>
+<div id="L36" class="row"><span class="ln">  36</span><span class="code">        WHERE  CONFIG_ID = 1</span></div>
+<div id="L37" class="row"><span class="ln">  37</span><span class="code">          AND  IS_ACTIVE = 'Y';</span></div>
+<div id="L38" class="row"><span class="ln">  38</span><span class="code"></span></div>
+<div id="L39" class="row"><span class="ln">  39</span><span class="code">        v_timestamp := TO_CHAR(SYSTIMESTAMP, v_timestamp_format);</span></div>
+<div id="L40" class="row"><span class="ln">  40</span><span class="code"></span></div>
+<div id="L41" class="row"><span class="ln">  41</span><span class="code">        SELECT CRM_MPM_UNIQUE_ID_SEQ.NEXTVAL INTO v_seq FROM DUAL;</span></div>
+<div id="L42" class="row"><span class="ln">  42</span><span class="code"></span></div>
+<div id="L43" class="row"><span class="ln">  43</span><span class="code">        v_seq_padded := LPAD(TO_CHAR(v_seq), v_sequence_digits, '0');</span></div>
+<div id="L44" class="row"><span class="ln">  44</span><span class="code"></span></div>
+<div id="L45" class="row"><span class="ln">  45</span><span class="code">        RETURN v_channel_id || v_timestamp || v_seq_padded;</span></div>
+<div id="L46" class="row"><span class="ln">  46</span><span class="code"></span></div>
+<div id="L47" class="row"><span class="ln">  47</span><span class="code">    EXCEPTION</span></div>
+<div id="L48" class="row"><span class="ln">  48</span><span class="code">        WHEN NO_DATA_FOUND THEN</span></div>
+<div id="L49" class="row cmt"><span class="ln">  49</span><span class="code">            -- Config missing or inactive — fall back to a safe default</span></div>
+<div id="L50" class="row cmt"><span class="ln">  50</span><span class="code">            -- so SEND_TO_APIC never fails purely because of this header.</span></div>
+<div id="L51" class="row"><span class="ln">  51</span><span class="code">            RETURN '814' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3') ||</span></div>
+<div id="L52" class="row"><span class="ln">  52</span><span class="code">                   LPAD(TO_CHAR(CRM_MPM_UNIQUE_ID_SEQ.NEXTVAL), 4, '0');</span></div>
+<div id="L53" class="row"><span class="ln">  53</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L54" class="row cmt"><span class="ln">  54</span><span class="code">            -- Never let unique-id generation fail the whole send — log and</span></div>
+<div id="L55" class="row cmt"><span class="ln">  55</span><span class="code">            -- fall back to a timestamp-only id so the request still goes out.</span></div>
+<div id="L56" class="row"><span class="ln">  56</span><span class="code">            RETURN '814' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3');</span></div>
+<div id="L57" class="row proc"><span class="ln">  57</span><span class="code">    END GENERATE_UNIQUE_ID;</span></div>
+<div id="L58" class="row"><span class="ln">  58</span><span class="code"></span></div>
+<div id="L59" class="row"><span class="ln">  59</span><span class="code"></span></div>
+<div id="L60" class="row"><span class="ln">  60</span><span class="code">    /* ====================================================================</span></div>
+<div id="L61" class="row"><span class="ln">  61</span><span class="code">       TOKEN MANAGEMENT</span></div>
+<div id="L62" class="row"><span class="ln">  62</span><span class="code">       ==================================================================== */</span></div>
+<div id="L63" class="row proc"><span class="ln">  63</span><span class="code">    FUNCTION GET_BEARER_TOKEN(p_cred_code IN VARCHAR2) RETURN VARCHAR2 IS</span></div>
+<div id="L64" class="row"><span class="ln">  64</span><span class="code">        v_cred            CRM_MPM_API_CREDENTIALS%ROWTYPE;</span></div>
+<div id="L65" class="row"><span class="ln">  65</span><span class="code">        v_client_secret   VARCHAR2(500);</span></div>
+<div id="L66" class="row"><span class="ln">  66</span><span class="code">        v_request_body    VARCHAR2(4000);</span></div>
+<div id="L67" class="row"><span class="ln">  67</span><span class="code">        v_http_req        UTL_HTTP.REQ;</span></div>
+<div id="L68" class="row"><span class="ln">  68</span><span class="code">        v_http_resp       UTL_HTTP.RESP;</span></div>
+<div id="L69" class="row"><span class="ln">  69</span><span class="code">        v_response        CLOB := EMPTY_CLOB();</span></div>
+<div id="L70" class="row"><span class="ln">  70</span><span class="code">        v_buffer          VARCHAR2(32767);</span></div>
+<div id="L71" class="row"><span class="ln">  71</span><span class="code">        v_token           VARCHAR2(4000);</span></div>
+<div id="L72" class="row"><span class="ln">  72</span><span class="code">        v_expires_in      NUMBER;</span></div>
+<div id="L73" class="row fix"><span class="ln">  73</span><span class="code">        -- FIX: capture SQLERRM into a variable before use in RAISE_APPLICATION_ERROR</span></div>
+<div id="L74" class="row"><span class="ln">  74</span><span class="code">        v_err_msg         VARCHAR2(4000);</span></div>
+<div id="L75" class="row"><span class="ln">  75</span><span class="code">    BEGIN</span></div>
+<div id="L76" class="row"><span class="ln">  76</span><span class="code">        SELECT * INTO v_cred</span></div>
+<div id="L77" class="row"><span class="ln">  77</span><span class="code">        FROM CRM_MPM_API_CREDENTIALS</span></div>
+<div id="L78" class="row"><span class="ln">  78</span><span class="code">        WHERE CRED_CODE = p_cred_code</span></div>
+<div id="L79" class="row"><span class="ln">  79</span><span class="code">          AND IS_ACTIVE = 'Y';</span></div>
+<div id="L80" class="row"><span class="ln">  80</span><span class="code"></span></div>
+<div id="L81" class="row"><span class="ln">  81</span><span class="code">        IF v_cred.TOKEN_CACHE_VALUE IS NOT NULL</span></div>
+<div id="L82" class="row"><span class="ln">  82</span><span class="code">           AND v_cred.TOKEN_EXPIRY IS NOT NULL</span></div>
+<div id="L83" class="row"><span class="ln">  83</span><span class="code">           AND v_cred.TOKEN_EXPIRY &gt; SYSTIMESTAMP + (60/86400)</span></div>
+<div id="L84" class="row"><span class="ln">  84</span><span class="code">        THEN</span></div>
+<div id="L85" class="row"><span class="ln">  85</span><span class="code">            RETURN v_cred.TOKEN_CACHE_VALUE;</span></div>
+<div id="L86" class="row"><span class="ln">  86</span><span class="code">        END IF;</span></div>
+<div id="L87" class="row"><span class="ln">  87</span><span class="code"></span></div>
+<div id="L88" class="row"><span class="ln">  88</span><span class="code">        v_client_secret := v_cred.CLIENT_SECRET_REF;  -- reads from CRM_MPM_API_CREDENTIALS table</span></div>
+<div id="L89" class="row"><span class="ln">  89</span><span class="code"></span></div>
+<div id="L90" class="row"><span class="ln">  90</span><span class="code">        v_request_body :=</span></div>
+<div id="L91" class="row"><span class="ln">  91</span><span class="code">            'grant_type=' || v_cred.GRANT_TYPE ||</span></div>
+<div id="L92" class="row"><span class="ln">  92</span><span class="code">            '&amp;client_id=' || UTL_URL.ESCAPE(v_cred.CLIENT_ID, TRUE) ||</span></div>
+<div id="L93" class="row"><span class="ln">  93</span><span class="code">            '&amp;client_secret=' || UTL_URL.ESCAPE(v_client_secret, TRUE) ||</span></div>
+<div id="L94" class="row"><span class="ln">  94</span><span class="code">            CASE WHEN v_cred.SCOPE IS NOT NULL</span></div>
+<div id="L95" class="row"><span class="ln">  95</span><span class="code">                 THEN '&amp;scope=' || UTL_URL.ESCAPE(v_cred.SCOPE, TRUE)</span></div>
+<div id="L96" class="row"><span class="ln">  96</span><span class="code">                 ELSE NULL END;</span></div>
+<div id="L97" class="row"><span class="ln">  97</span><span class="code"></span></div>
+<div id="L98" class="row"><span class="ln">  98</span><span class="code">        UTL_HTTP.SET_TRANSFER_TIMEOUT(30);</span></div>
+<div id="L99" class="row cmt"><span class="ln">  99</span><span class="code">        -- Set Oracle Wallet for HTTPS — required for any TOKEN_URL using https://</span></div>
+<div id="L100" class="row"><span class="ln"> 100</span><span class="code">        IF v_cred.WALLET_PATH IS NOT NULL THEN</span></div>
+<div id="L101" class="row"><span class="ln"> 101</span><span class="code">            UTL_HTTP.SET_WALLET(v_cred.WALLET_PATH, v_cred.WALLET_PASSWORD);</span></div>
+<div id="L102" class="row"><span class="ln"> 102</span><span class="code">        END IF;</span></div>
+<div id="L103" class="row"><span class="ln"> 103</span><span class="code">        v_http_req := UTL_HTTP.BEGIN_REQUEST(v_cred.TOKEN_URL, 'POST', 'HTTP/1.1');</span></div>
+<div id="L104" class="row"><span class="ln"> 104</span><span class="code">        UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/x-www-form-urlencoded');</span></div>
+<div id="L105" class="row"><span class="ln"> 105</span><span class="code">        UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', LENGTH(v_request_body));</span></div>
+<div id="L106" class="row"><span class="ln"> 106</span><span class="code">        UTL_HTTP.WRITE_TEXT(v_http_req, v_request_body);</span></div>
+<div id="L107" class="row"><span class="ln"> 107</span><span class="code"></span></div>
+<div id="L108" class="row"><span class="ln"> 108</span><span class="code">        v_http_resp := UTL_HTTP.GET_RESPONSE(v_http_req);</span></div>
+<div id="L109" class="row"><span class="ln"> 109</span><span class="code"></span></div>
+<div id="L110" class="row"><span class="ln"> 110</span><span class="code">        DBMS_LOB.CREATETEMPORARY(v_response, TRUE);</span></div>
+<div id="L111" class="row"><span class="ln"> 111</span><span class="code">        BEGIN</span></div>
+<div id="L112" class="row"><span class="ln"> 112</span><span class="code">            LOOP</span></div>
+<div id="L113" class="row"><span class="ln"> 113</span><span class="code">                UTL_HTTP.READ_TEXT(v_http_resp, v_buffer, 32767);</span></div>
+<div id="L114" class="row"><span class="ln"> 114</span><span class="code">                DBMS_LOB.WRITEAPPEND(v_response, LENGTH(v_buffer), v_buffer);</span></div>
+<div id="L115" class="row"><span class="ln"> 115</span><span class="code">            END LOOP;</span></div>
+<div id="L116" class="row"><span class="ln"> 116</span><span class="code">        EXCEPTION</span></div>
+<div id="L117" class="row"><span class="ln"> 117</span><span class="code">            WHEN UTL_HTTP.END_OF_BODY THEN NULL;</span></div>
+<div id="L118" class="row"><span class="ln"> 118</span><span class="code">        END;</span></div>
+<div id="L119" class="row"><span class="ln"> 119</span><span class="code">        UTL_HTTP.END_RESPONSE(v_http_resp);</span></div>
+<div id="L120" class="row"><span class="ln"> 120</span><span class="code"></span></div>
+<div id="L121" class="row"><span class="ln"> 121</span><span class="code">        IF v_http_resp.status_code &lt;&gt; 200 THEN</span></div>
+<div id="L122" class="row"><span class="ln"> 122</span><span class="code">            RAISE_APPLICATION_ERROR(-20001,</span></div>
+<div id="L123" class="row"><span class="ln"> 123</span><span class="code">                'Token request failed. HTTP ' || v_http_resp.status_code ||</span></div>
+<div id="L124" class="row"><span class="ln"> 124</span><span class="code">                ' Response: ' || DBMS_LOB.SUBSTR(v_response, 4000, 1));</span></div>
+<div id="L125" class="row"><span class="ln"> 125</span><span class="code">        END IF;</span></div>
+<div id="L126" class="row"><span class="ln"> 126</span><span class="code"></span></div>
+<div id="L127" class="row"><span class="ln"> 127</span><span class="code">        v_token      := JSON_VALUE(v_response, '$.access_token');</span></div>
+<div id="L128" class="row"><span class="ln"> 128</span><span class="code">        v_expires_in := JSON_VALUE(v_response, '$.expires_in' RETURNING NUMBER DEFAULT 3600 ON ERROR);</span></div>
+<div id="L129" class="row"><span class="ln"> 129</span><span class="code"></span></div>
+<div id="L130" class="row"><span class="ln"> 130</span><span class="code">        IF v_token IS NULL THEN</span></div>
+<div id="L131" class="row"><span class="ln"> 131</span><span class="code">            RAISE_APPLICATION_ERROR(-20002, 'Token response did not contain access_token: ' ||</span></div>
+<div id="L132" class="row"><span class="ln"> 132</span><span class="code">                DBMS_LOB.SUBSTR(v_response, 4000, 1));</span></div>
+<div id="L133" class="row"><span class="ln"> 133</span><span class="code">        END IF;</span></div>
+<div id="L134" class="row"><span class="ln"> 134</span><span class="code"></span></div>
+<div id="L135" class="row"><span class="ln"> 135</span><span class="code">        UPDATE CRM_MPM_API_CREDENTIALS</span></div>
+<div id="L136" class="row"><span class="ln"> 136</span><span class="code">        SET TOKEN_CACHE_VALUE = v_token,</span></div>
+<div id="L137" class="row"><span class="ln"> 137</span><span class="code">            TOKEN_EXPIRY      = SYSTIMESTAMP + (v_expires_in / 86400),</span></div>
+<div id="L138" class="row"><span class="ln"> 138</span><span class="code">            UPDATED_DATE      = SYSTIMESTAMP</span></div>
+<div id="L139" class="row"><span class="ln"> 139</span><span class="code">        WHERE CRED_CODE = p_cred_code;</span></div>
+<div id="L140" class="row"><span class="ln"> 140</span><span class="code"></span></div>
+<div id="L141" class="row"><span class="ln"> 141</span><span class="code">        RETURN v_token;</span></div>
+<div id="L142" class="row"><span class="ln"> 142</span><span class="code"></span></div>
+<div id="L143" class="row"><span class="ln"> 143</span><span class="code">    EXCEPTION</span></div>
+<div id="L144" class="row fix"><span class="ln"> 144</span><span class="code">        -- FIX: capture SQLERRM into local variable before embedding in SQL/string</span></div>
+<div id="L145" class="row"><span class="ln"> 145</span><span class="code">        WHEN UTL_HTTP.TRANSFER_TIMEOUT OR UTL_HTTP.HTTP_CLIENT_ERROR OR UTL_HTTP.HTTP_SERVER_ERROR THEN</span></div>
+<div id="L146" class="row"><span class="ln"> 146</span><span class="code">            v_err_msg := SQLERRM;  -- capture first</span></div>
+<div id="L147" class="row"><span class="ln"> 147</span><span class="code">            BEGIN UTL_HTTP.END_RESPONSE(v_http_resp); EXCEPTION WHEN OTHERS THEN NULL; END;</span></div>
+<div id="L148" class="row"><span class="ln"> 148</span><span class="code">            RAISE_APPLICATION_ERROR(-20003, 'Token endpoint connection failed: ' || v_err_msg);</span></div>
+<div id="L149" class="row"><span class="ln"> 149</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L150" class="row"><span class="ln"> 150</span><span class="code">            BEGIN UTL_HTTP.END_RESPONSE(v_http_resp); EXCEPTION WHEN OTHERS THEN NULL; END;</span></div>
+<div id="L151" class="row"><span class="ln"> 151</span><span class="code">            RAISE;</span></div>
+<div id="L152" class="row proc"><span class="ln"> 152</span><span class="code">    END GET_BEARER_TOKEN;</span></div>
+<div id="L153" class="row"><span class="ln"> 153</span><span class="code"></span></div>
+<div id="L154" class="row"><span class="ln"> 154</span><span class="code"></span></div>
+<div id="L155" class="row"><span class="ln"> 155</span><span class="code">    /* ====================================================================</span></div>
+<div id="L156" class="row"><span class="ln"> 156</span><span class="code">       JSON BUILDER</span></div>
+<div id="L157" class="row"><span class="ln"> 157</span><span class="code">       ==================================================================== */</span></div>
+<div id="L158" class="row proc"><span class="ln"> 158</span><span class="code">    FUNCTION BUILD_JSON_PAYLOAD(</span></div>
+<div id="L159" class="row"><span class="ln"> 159</span><span class="code">        p_registry_id IN NUMBER,</span></div>
+<div id="L160" class="row"><span class="ln"> 160</span><span class="code">        p_source_view IN VARCHAR2,</span></div>
+<div id="L161" class="row"><span class="ln"> 161</span><span class="code">        p_key_col     IN VARCHAR2,</span></div>
+<div id="L162" class="row"><span class="ln"> 162</span><span class="code">        p_key_value   IN VARCHAR2</span></div>
+<div id="L163" class="row"><span class="ln"> 163</span><span class="code">    ) RETURN CLOB IS</span></div>
+<div id="L164" class="row"><span class="ln"> 164</span><span class="code">        v_cursor_id     INTEGER;</span></div>
+<div id="L165" class="row"><span class="ln"> 165</span><span class="code">        v_sql           VARCHAR2(4000);</span></div>
+<div id="L166" class="row"><span class="ln"> 166</span><span class="code">        v_col_cnt       INTEGER;</span></div>
+<div id="L167" class="row"><span class="ln"> 167</span><span class="code">        v_desc_tab      DBMS_SQL.DESC_TAB2;</span></div>
+<div id="L168" class="row"><span class="ln"> 168</span><span class="code">        v_result_clob   CLOB;</span></div>
+<div id="L169" class="row"><span class="ln"> 169</span><span class="code">        v_json_obj      JSON_OBJECT_T := JSON_OBJECT_T();</span></div>
+<div id="L170" class="row"><span class="ln"> 170</span><span class="code"></span></div>
+<div id="L171" class="row"><span class="ln"> 171</span><span class="code">        CURSOR c_map(p_mapping_name VARCHAR2) IS</span></div>
+<div id="L172" class="row"><span class="ln"> 172</span><span class="code">            SELECT SOURCE_COLUMN, JSON_PATH, DATA_TYPE, DATE_FORMAT, DISPLAY_ORDER</span></div>
+<div id="L173" class="row"><span class="ln"> 173</span><span class="code">            FROM CRM_MPM_API_FIELD_MAPPING</span></div>
+<div id="L174" class="row"><span class="ln"> 174</span><span class="code">            WHERE JSON_MAPPING_NAME = p_mapping_name</span></div>
+<div id="L175" class="row"><span class="ln"> 175</span><span class="code">              AND IS_ACTIVE = 'Y'</span></div>
+<div id="L176" class="row"><span class="ln"> 176</span><span class="code">            ORDER BY DISPLAY_ORDER;</span></div>
+<div id="L177" class="row"><span class="ln"> 177</span><span class="code"></span></div>
+<div id="L178" class="row"><span class="ln"> 178</span><span class="code">        v_mapping_name  VARCHAR2(100);</span></div>
+<div id="L179" class="row"><span class="ln"> 179</span><span class="code">        v_source_type   VARCHAR2(20);</span></div>
+<div id="L180" class="row"><span class="ln"> 180</span><span class="code">        v_source_proc   VARCHAR2(128);</span></div>
+<div id="L181" class="row"><span class="ln"> 181</span><span class="code">        v_ref_cursor    SYS_REFCURSOR;</span></div>
+<div id="L182" class="row"><span class="ln"> 182</span><span class="code">        v_val_varchar   VARCHAR2(4000);</span></div>
+<div id="L183" class="row"><span class="ln"> 183</span><span class="code"></span></div>
+<div id="L184" class="row"><span class="ln"> 184</span><span class="code">        PROCEDURE SET_NESTED_VALUE(</span></div>
+<div id="L185" class="row"><span class="ln"> 185</span><span class="code">            p_root      IN OUT NOCOPY JSON_OBJECT_T,</span></div>
+<div id="L186" class="row"><span class="ln"> 186</span><span class="code">            p_path      IN VARCHAR2,</span></div>
+<div id="L187" class="row"><span class="ln"> 187</span><span class="code">            p_value     IN VARCHAR2,</span></div>
+<div id="L188" class="row"><span class="ln"> 188</span><span class="code">            p_data_type IN VARCHAR2</span></div>
+<div id="L189" class="row"><span class="ln"> 189</span><span class="code">        ) IS</span></div>
+<div id="L190" class="row"><span class="ln"> 190</span><span class="code">            v_dot   PLS_INTEGER;</span></div>
+<div id="L191" class="row"><span class="ln"> 191</span><span class="code">            v_key   VARCHAR2(100);</span></div>
+<div id="L192" class="row"><span class="ln"> 192</span><span class="code">            v_rest  VARCHAR2(200);</span></div>
+<div id="L193" class="row"><span class="ln"> 193</span><span class="code">            v_child JSON_OBJECT_T;</span></div>
+<div id="L194" class="row"><span class="ln"> 194</span><span class="code">        BEGIN</span></div>
+<div id="L195" class="row"><span class="ln"> 195</span><span class="code">            v_dot := INSTR(p_path, '.');</span></div>
+<div id="L196" class="row"><span class="ln"> 196</span><span class="code">            IF v_dot = 0 THEN</span></div>
+<div id="L197" class="row"><span class="ln"> 197</span><span class="code">                CASE p_data_type</span></div>
+<div id="L198" class="row"><span class="ln"> 198</span><span class="code">                    WHEN 'NUMBER' THEN</span></div>
+<div id="L199" class="row"><span class="ln"> 199</span><span class="code">                        IF p_value IS NOT NULL THEN</span></div>
+<div id="L200" class="row"><span class="ln"> 200</span><span class="code">                            p_root.put(p_path, TO_NUMBER(p_value));</span></div>
+<div id="L201" class="row"><span class="ln"> 201</span><span class="code">                        ELSE</span></div>
+<div id="L202" class="row"><span class="ln"> 202</span><span class="code">                            p_root.put_null(p_path);</span></div>
+<div id="L203" class="row"><span class="ln"> 203</span><span class="code">                        END IF;</span></div>
+<div id="L204" class="row"><span class="ln"> 204</span><span class="code">                    WHEN 'BOOLEAN' THEN</span></div>
+<div id="L205" class="row"><span class="ln"> 205</span><span class="code">                        p_root.put(p_path, (p_value IN ('Y','1','TRUE')));</span></div>
+<div id="L206" class="row"><span class="ln"> 206</span><span class="code">                    ELSE</span></div>
+<div id="L207" class="row cmt"><span class="ln"> 207</span><span class="code">                        -- Check if source column name ends with _JSON</span></div>
+<div id="L208" class="row cmt"><span class="ln"> 208</span><span class="code">                        -- These columns contain pre-built JSON arrays from the view</span></div>
+<div id="L209" class="row cmt"><span class="ln"> 209</span><span class="code">                        -- e.g. UTILITIES_JSON, SECURITY_OFFICERS_JSON</span></div>
+<div id="L210" class="row"><span class="ln"> 210</span><span class="code">                        IF UPPER(p_path) LIKE '%_JSON' OR</span></div>
+<div id="L211" class="row"><span class="ln"> 211</span><span class="code">                           p_value LIKE '[%' OR p_value LIKE '{%' THEN</span></div>
+<div id="L212" class="row"><span class="ln"> 212</span><span class="code">                            IF p_value IS NOT NULL THEN</span></div>
+<div id="L213" class="row"><span class="ln"> 213</span><span class="code">                                BEGIN</span></div>
+<div id="L214" class="row"><span class="ln"> 214</span><span class="code">                                    p_root.put(p_path, JSON_ELEMENT_T.PARSE(p_value));</span></div>
+<div id="L215" class="row"><span class="ln"> 215</span><span class="code">                                EXCEPTION</span></div>
+<div id="L216" class="row"><span class="ln"> 216</span><span class="code">                                    WHEN OTHERS THEN</span></div>
+<div id="L217" class="row"><span class="ln"> 217</span><span class="code">                                        p_root.put(p_path, p_value);</span></div>
+<div id="L218" class="row"><span class="ln"> 218</span><span class="code">                                END;</span></div>
+<div id="L219" class="row"><span class="ln"> 219</span><span class="code">                            ELSE</span></div>
+<div id="L220" class="row"><span class="ln"> 220</span><span class="code">                                p_root.put(p_path, JSON_ARRAY_T());</span></div>
+<div id="L221" class="row"><span class="ln"> 221</span><span class="code">                            END IF;</span></div>
+<div id="L222" class="row"><span class="ln"> 222</span><span class="code">                        ELSE</span></div>
+<div id="L223" class="row"><span class="ln"> 223</span><span class="code">                        p_root.put(p_path, p_value);</span></div>
+<div id="L224" class="row"><span class="ln"> 224</span><span class="code">                        END IF;</span></div>
+<div id="L225" class="row"><span class="ln"> 225</span><span class="code">                END CASE;</span></div>
+<div id="L226" class="row"><span class="ln"> 226</span><span class="code">            ELSE</span></div>
+<div id="L227" class="row"><span class="ln"> 227</span><span class="code">                v_key  := SUBSTR(p_path, 1, v_dot - 1);</span></div>
+<div id="L228" class="row"><span class="ln"> 228</span><span class="code">                v_rest := SUBSTR(p_path, v_dot + 1);</span></div>
+<div id="L229" class="row"><span class="ln"> 229</span><span class="code">                IF p_root.has(v_key) THEN</span></div>
+<div id="L230" class="row"><span class="ln"> 230</span><span class="code">                    v_child := TREAT(p_root.get(v_key) AS JSON_OBJECT_T);</span></div>
+<div id="L231" class="row"><span class="ln"> 231</span><span class="code">                ELSE</span></div>
+<div id="L232" class="row"><span class="ln"> 232</span><span class="code">                    v_child := JSON_OBJECT_T();</span></div>
+<div id="L233" class="row"><span class="ln"> 233</span><span class="code">                END IF;</span></div>
+<div id="L234" class="row"><span class="ln"> 234</span><span class="code">                SET_NESTED_VALUE(v_child, v_rest, p_value, p_data_type);</span></div>
+<div id="L235" class="row"><span class="ln"> 235</span><span class="code">                p_root.put(v_key, v_child);</span></div>
+<div id="L236" class="row"><span class="ln"> 236</span><span class="code">            END IF;</span></div>
+<div id="L237" class="row"><span class="ln"> 237</span><span class="code">        END SET_NESTED_VALUE;</span></div>
+<div id="L238" class="row"><span class="ln"> 238</span><span class="code"></span></div>
+<div id="L239" class="row"><span class="ln"> 239</span><span class="code">    BEGIN</span></div>
+<div id="L240" class="row"><span class="ln"> 240</span><span class="code">        SELECT JSON_MAPPING_NAME, SOURCE_TYPE, SOURCE_PROC</span></div>
+<div id="L241" class="row"><span class="ln"> 241</span><span class="code">        INTO v_mapping_name, v_source_type, v_source_proc</span></div>
+<div id="L242" class="row"><span class="ln"> 242</span><span class="code">        FROM CRM_MPM_API_REGISTRY WHERE REGISTRY_ID = p_registry_id;</span></div>
+<div id="L243" class="row"><span class="ln"> 243</span><span class="code"></span></div>
+<div id="L244" class="row"><span class="ln"> 244</span><span class="code">        IF v_source_type = 'PROCEDURE' THEN</span></div>
+<div id="L245" class="row"><span class="ln"> 245</span><span class="code">            IF v_source_proc IS NULL THEN</span></div>
+<div id="L246" class="row"><span class="ln"> 246</span><span class="code">                RAISE_APPLICATION_ERROR(-20011,</span></div>
+<div id="L247" class="row"><span class="ln"> 247</span><span class="code">                    'SOURCE_TYPE=PROCEDURE but SOURCE_PROC is NULL for REGISTRY_ID=' || p_registry_id);</span></div>
+<div id="L248" class="row"><span class="ln"> 248</span><span class="code">            END IF;</span></div>
+<div id="L249" class="row"><span class="ln"> 249</span><span class="code"></span></div>
+<div id="L250" class="row fix"><span class="ln"> 250</span><span class="code">            -- FIX: EXECUTE IMMEDIATE with OUT bind for ref cursor</span></div>
+<div id="L251" class="row"><span class="ln"> 251</span><span class="code">            v_sql := 'BEGIN ' || v_source_proc || '(:p_key, :p_cursor); END;';</span></div>
+<div id="L252" class="row"><span class="ln"> 252</span><span class="code">            EXECUTE IMMEDIATE v_sql USING IN p_key_value, IN OUT v_ref_cursor;</span></div>
+<div id="L253" class="row"><span class="ln"> 253</span><span class="code"></span></div>
+<div id="L254" class="row"><span class="ln"> 254</span><span class="code">            v_cursor_id := DBMS_SQL.TO_CURSOR_NUMBER(v_ref_cursor);</span></div>
+<div id="L255" class="row"><span class="ln"> 255</span><span class="code">            DBMS_SQL.DESCRIBE_COLUMNS2(v_cursor_id, v_col_cnt, v_desc_tab);</span></div>
+<div id="L256" class="row"><span class="ln"> 256</span><span class="code"></span></div>
+<div id="L257" class="row"><span class="ln"> 257</span><span class="code">            FOR i IN 1..v_col_cnt LOOP</span></div>
+<div id="L258" class="row"><span class="ln"> 258</span><span class="code">                DBMS_SQL.DEFINE_COLUMN(v_cursor_id, i, v_val_varchar, 4000);</span></div>
+<div id="L259" class="row"><span class="ln"> 259</span><span class="code">            END LOOP;</span></div>
+<div id="L260" class="row"><span class="ln"> 260</span><span class="code"></span></div>
+<div id="L261" class="row"><span class="ln"> 261</span><span class="code">            IF DBMS_SQL.FETCH_ROWS(v_cursor_id) = 0 THEN</span></div>
+<div id="L262" class="row"><span class="ln"> 262</span><span class="code">                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L263" class="row"><span class="ln"> 263</span><span class="code">                RAISE_APPLICATION_ERROR(-20010,</span></div>
+<div id="L264" class="row"><span class="ln"> 264</span><span class="code">                    'No row returned by procedure ' || v_source_proc ||</span></div>
+<div id="L265" class="row"><span class="ln"> 265</span><span class="code">                    ' for ' || p_key_col || ' = ' || p_key_value);</span></div>
+<div id="L266" class="row"><span class="ln"> 266</span><span class="code">            END IF;</span></div>
+<div id="L267" class="row"><span class="ln"> 267</span><span class="code"></span></div>
+<div id="L268" class="row"><span class="ln"> 268</span><span class="code">        ELSE</span></div>
+<div id="L269" class="row"><span class="ln"> 269</span><span class="code">            v_sql := 'SELECT * FROM ' || p_source_view ||</span></div>
+<div id="L270" class="row"><span class="ln"> 270</span><span class="code">                     ' WHERE ' || p_key_col || ' = :keyval';</span></div>
+<div id="L271" class="row"><span class="ln"> 271</span><span class="code"></span></div>
+<div id="L272" class="row"><span class="ln"> 272</span><span class="code">            v_cursor_id := DBMS_SQL.OPEN_CURSOR;</span></div>
+<div id="L273" class="row"><span class="ln"> 273</span><span class="code">            DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);</span></div>
+<div id="L274" class="row"><span class="ln"> 274</span><span class="code">            DBMS_SQL.BIND_VARIABLE(v_cursor_id, ':keyval', p_key_value);</span></div>
+<div id="L275" class="row"><span class="ln"> 275</span><span class="code">            DBMS_SQL.DESCRIBE_COLUMNS2(v_cursor_id, v_col_cnt, v_desc_tab);</span></div>
+<div id="L276" class="row"><span class="ln"> 276</span><span class="code"></span></div>
+<div id="L277" class="row"><span class="ln"> 277</span><span class="code">            FOR i IN 1..v_col_cnt LOOP</span></div>
+<div id="L278" class="row"><span class="ln"> 278</span><span class="code">                DBMS_SQL.DEFINE_COLUMN(v_cursor_id, i, v_val_varchar, 4000);</span></div>
+<div id="L279" class="row"><span class="ln"> 279</span><span class="code">            END LOOP;</span></div>
+<div id="L280" class="row"><span class="ln"> 280</span><span class="code"></span></div>
+<div id="L281" class="row"><span class="ln"> 281</span><span class="code">            IF DBMS_SQL.EXECUTE_AND_FETCH(v_cursor_id) = 0 THEN</span></div>
+<div id="L282" class="row"><span class="ln"> 282</span><span class="code">                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L283" class="row"><span class="ln"> 283</span><span class="code">                RAISE_APPLICATION_ERROR(-20010,</span></div>
+<div id="L284" class="row"><span class="ln"> 284</span><span class="code">                    'No row found in ' || p_source_view ||</span></div>
+<div id="L285" class="row"><span class="ln"> 285</span><span class="code">                    ' for ' || p_key_col || ' = ' || p_key_value);</span></div>
+<div id="L286" class="row"><span class="ln"> 286</span><span class="code">            END IF;</span></div>
+<div id="L287" class="row"><span class="ln"> 287</span><span class="code">        END IF;</span></div>
+<div id="L288" class="row"><span class="ln"> 288</span><span class="code"></span></div>
+<div id="L289" class="row"><span class="ln"> 289</span><span class="code">        FOR rec IN c_map(v_mapping_name) LOOP</span></div>
+<div id="L290" class="row"><span class="ln"> 290</span><span class="code">            v_val_varchar := NULL;</span></div>
+<div id="L291" class="row"><span class="ln"> 291</span><span class="code">            FOR i IN 1..v_col_cnt LOOP</span></div>
+<div id="L292" class="row"><span class="ln"> 292</span><span class="code">                IF UPPER(v_desc_tab(i).col_name) = UPPER(rec.SOURCE_COLUMN) THEN</span></div>
+<div id="L293" class="row"><span class="ln"> 293</span><span class="code">                    DBMS_SQL.COLUMN_VALUE(v_cursor_id, i, v_val_varchar);</span></div>
+<div id="L294" class="row"><span class="ln"> 294</span><span class="code">                END IF;</span></div>
+<div id="L295" class="row"><span class="ln"> 295</span><span class="code">            END LOOP;</span></div>
+<div id="L296" class="row"><span class="ln"> 296</span><span class="code">            SET_NESTED_VALUE(v_json_obj, rec.JSON_PATH, v_val_varchar, rec.DATA_TYPE);</span></div>
+<div id="L297" class="row"><span class="ln"> 297</span><span class="code">        END LOOP;</span></div>
+<div id="L298" class="row"><span class="ln"> 298</span><span class="code"></span></div>
+<div id="L299" class="row"><span class="ln"> 299</span><span class="code">        DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L300" class="row"><span class="ln"> 300</span><span class="code">        v_result_clob := v_json_obj.to_clob();</span></div>
+<div id="L301" class="row"><span class="ln"> 301</span><span class="code">        RETURN v_result_clob;</span></div>
+<div id="L302" class="row"><span class="ln"> 302</span><span class="code"></span></div>
+<div id="L303" class="row"><span class="ln"> 303</span><span class="code">    EXCEPTION</span></div>
+<div id="L304" class="row"><span class="ln"> 304</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L305" class="row"><span class="ln"> 305</span><span class="code">            IF DBMS_SQL.IS_OPEN(v_cursor_id) THEN</span></div>
+<div id="L306" class="row"><span class="ln"> 306</span><span class="code">                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L307" class="row"><span class="ln"> 307</span><span class="code">            END IF;</span></div>
+<div id="L308" class="row"><span class="ln"> 308</span><span class="code">            RAISE;</span></div>
+<div id="L309" class="row proc"><span class="ln"> 309</span><span class="code">    END BUILD_JSON_PAYLOAD;</span></div>
+<div id="L310" class="row"><span class="ln"> 310</span><span class="code"></span></div>
+<div id="L311" class="row"><span class="ln"> 311</span><span class="code"></span></div>
+<div id="L312" class="row"><span class="ln"> 312</span><span class="code">    /* ====================================================================</span></div>
+<div id="L313" class="row"><span class="ln"> 313</span><span class="code">       SEND_TO_APIC</span></div>
+<div id="L314" class="row"><span class="ln"> 314</span><span class="code">       ==================================================================== */</span></div>
+<div id="L315" class="row proc"><span class="ln"> 315</span><span class="code">    PROCEDURE SEND_TO_APIC(</span></div>
+<div id="L316" class="row"><span class="ln"> 316</span><span class="code">        p_registry_id          IN NUMBER,</span></div>
+<div id="L317" class="row"><span class="ln"> 317</span><span class="code">        p_key_value            IN VARCHAR2,</span></div>
+<div id="L318" class="row"><span class="ln"> 318</span><span class="code">        p_transaction_group_id IN VARCHAR2 DEFAULT NULL,</span></div>
+<div id="L319" class="row"><span class="ln"> 319</span><span class="code">        p_attempt_no           IN NUMBER   DEFAULT 1,</span></div>
+<div id="L320" class="row"><span class="ln"> 320</span><span class="code">        p_log_id_out           OUT NUMBER</span></div>
+<div id="L321" class="row"><span class="ln"> 321</span><span class="code">    ) IS</span></div>
+<div id="L322" class="row"><span class="ln"> 322</span><span class="code">        v_reg           CRM_MPM_API_REGISTRY%ROWTYPE;</span></div>
+<div id="L323" class="row"><span class="ln"> 323</span><span class="code">        v_payload       CLOB;</span></div>
+<div id="L324" class="row"><span class="ln"> 324</span><span class="code">        v_token         VARCHAR2(4000);</span></div>
+<div id="L325" class="row"><span class="ln"> 325</span><span class="code">        v_http_req      UTL_HTTP.REQ;</span></div>
+<div id="L326" class="row"><span class="ln"> 326</span><span class="code">        v_http_resp     UTL_HTTP.RESP;</span></div>
+<div id="L327" class="row"><span class="ln"> 327</span><span class="code">        v_response      CLOB := EMPTY_CLOB();</span></div>
+<div id="L328" class="row"><span class="ln"> 328</span><span class="code">        v_buffer        VARCHAR2(32767);</span></div>
+<div id="L329" class="row"><span class="ln"> 329</span><span class="code">        v_txn_group     VARCHAR2(40);</span></div>
+<div id="L330" class="row"><span class="ln"> 330</span><span class="code">        v_unique_id     VARCHAR2(60);</span></div>
+<div id="L331" class="row"><span class="ln"> 331</span><span class="code">        v_wallet_path     VARCHAR2(200);</span></div>
+<div id="L332" class="row"><span class="ln"> 332</span><span class="code">        v_wallet_password VARCHAR2(200);</span></div>
+<div id="L333" class="row"><span class="ln"> 333</span><span class="code">        v_log_id        NUMBER;</span></div>
+<div id="L334" class="row"><span class="ln"> 334</span><span class="code">        v_status_code   VARCHAR2(10);</span></div>
+<div id="L335" class="row"><span class="ln"> 335</span><span class="code">        v_final_status  VARCHAR2(20);</span></div>
+<div id="L336" class="row"><span class="ln"> 336</span><span class="code">        v_error_code    VARCHAR2(30);</span></div>
+<div id="L337" class="row"><span class="ln"> 337</span><span class="code">        v_error_message VARCHAR2(4000);</span></div>
+<div id="L338" class="row cmt"><span class="ln"> 338</span><span class="code">        -- ACK response fields (LEG 1 synchronous response from CRM via APIC)</span></div>
+<div id="L339" class="row"><span class="ln"> 339</span><span class="code">        v_ack_request_id    VARCHAR2(100);</span></div>
+<div id="L340" class="row"><span class="ln"> 340</span><span class="code">        v_ack_status_code   VARCHAR2(10);</span></div>
+<div id="L341" class="row"><span class="ln"> 341</span><span class="code">        v_ack_description   VARCHAR2(500);</span></div>
+<div id="L342" class="row"><span class="ln"> 342</span><span class="code">        v_ack_message       VARCHAR2(1000);</span></div>
+<div id="L343" class="row"><span class="ln"> 343</span><span class="code">        v_ack_response_ts   VARCHAR2(50);  -- response_timestamp from LEG 1 ACK</span></div>
+<div id="L344" class="row fix"><span class="ln"> 344</span><span class="code">        -- FIX: local variables to hold SQLERRM before use in DML</span></div>
+<div id="L345" class="row"><span class="ln"> 345</span><span class="code">        v_err_msg       VARCHAR2(4000);</span></div>
+<div id="L346" class="row"><span class="ln"> 346</span><span class="code">    BEGIN</span></div>
+<div id="L347" class="row"><span class="ln"> 347</span><span class="code">        SELECT * INTO v_reg</span></div>
+<div id="L348" class="row"><span class="ln"> 348</span><span class="code">        FROM CRM_MPM_API_REGISTRY</span></div>
+<div id="L349" class="row"><span class="ln"> 349</span><span class="code">        WHERE REGISTRY_ID = p_registry_id AND IS_ACTIVE = 'Y';</span></div>
+<div id="L350" class="row"><span class="ln"> 350</span><span class="code"></span></div>
+<div id="L351" class="row cmt"><span class="ln"> 351</span><span class="code">        -- ----------------------------------------------------------------</span></div>
+<div id="L352" class="row cmt"><span class="ln"> 352</span><span class="code">        -- DUPLICATE GUARD (attempt_no=1 only — retries are intentional)</span></div>
+<div id="L353" class="row cmt"><span class="ln"> 353</span><span class="code">        -- If a SENT, SUCCESS or PENDING row already exists for this record,</span></div>
+<div id="L354" class="row cmt"><span class="ln"> 354</span><span class="code">        -- return the existing LOG_ID and skip re-sending to APIC.</span></div>
+<div id="L355" class="row cmt"><span class="ln"> 355</span><span class="code">        -- Prevents duplicates from scheduler overlaps or manual re-runs.</span></div>
+<div id="L356" class="row cmt"><span class="ln"> 356</span><span class="code">        -- ----------------------------------------------------------------</span></div>
+<div id="L357" class="row"><span class="ln"> 357</span><span class="code">        IF p_attempt_no = 1 THEN</span></div>
+<div id="L358" class="row"><span class="ln"> 358</span><span class="code">            DECLARE</span></div>
+<div id="L359" class="row"><span class="ln"> 359</span><span class="code">                v_exist_log_id NUMBER;</span></div>
+<div id="L360" class="row"><span class="ln"> 360</span><span class="code">                v_exist_status VARCHAR2(20);</span></div>
+<div id="L361" class="row"><span class="ln"> 361</span><span class="code">            BEGIN</span></div>
+<div id="L362" class="row"><span class="ln"> 362</span><span class="code">                SELECT LOG_ID, FINAL_STATUS</span></div>
+<div id="L363" class="row"><span class="ln"> 363</span><span class="code">                INTO   v_exist_log_id, v_exist_status</span></div>
+<div id="L364" class="row"><span class="ln"> 364</span><span class="code">                FROM   CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L365" class="row"><span class="ln"> 365</span><span class="code">                WHERE  REGISTRY_ID      = p_registry_id</span></div>
+<div id="L366" class="row"><span class="ln"> 366</span><span class="code">                  AND  SOURCE_RECORD_ID = p_key_value</span></div>
+<div id="L367" class="row"><span class="ln"> 367</span><span class="code">                  AND  FINAL_STATUS     IN ('PENDING','SENT','SUCCESS','ALREADY_PROCESSED')</span></div>
+<div id="L368" class="row"><span class="ln"> 368</span><span class="code">                ORDER BY LOG_ID DESC</span></div>
+<div id="L369" class="row"><span class="ln"> 369</span><span class="code">                FETCH FIRST 1 ROW ONLY;</span></div>
+<div id="L370" class="row cmt"><span class="ln"> 370</span><span class="code">                -- Duplicate found — return existing log_id, do not re-send</span></div>
+<div id="L371" class="row"><span class="ln"> 371</span><span class="code">                p_log_id_out := v_exist_log_id;</span></div>
+<div id="L372" class="row"><span class="ln"> 372</span><span class="code">                RETURN;</span></div>
+<div id="L373" class="row"><span class="ln"> 373</span><span class="code">            EXCEPTION</span></div>
+<div id="L374" class="row"><span class="ln"> 374</span><span class="code">                WHEN NO_DATA_FOUND THEN NULL; -- no duplicate, safe to proceed</span></div>
+<div id="L375" class="row"><span class="ln"> 375</span><span class="code">            END;</span></div>
+<div id="L376" class="row"><span class="ln"> 376</span><span class="code">        END IF;</span></div>
+<div id="L377" class="row"><span class="ln"> 377</span><span class="code"></span></div>
+<div id="L378" class="row"><span class="ln"> 378</span><span class="code">        v_txn_group := COALESCE(p_transaction_group_id, NEW_GUID());</span></div>
+<div id="L379" class="row"><span class="ln"> 379</span><span class="code">        v_unique_id := GENERATE_UNIQUE_ID();</span></div>
+<div id="L380" class="row"><span class="ln"> 380</span><span class="code"></span></div>
+<div id="L381" class="row"><span class="ln"> 381</span><span class="code">        v_payload := BUILD_JSON_PAYLOAD(</span></div>
+<div id="L382" class="row"><span class="ln"> 382</span><span class="code">            p_registry_id, v_reg.SOURCE_VIEW, v_reg.SOURCE_KEY_COL, p_key_value);</span></div>
+<div id="L383" class="row"><span class="ln"> 383</span><span class="code"></span></div>
+<div id="L384" class="row cmt"><span class="ln"> 384</span><span class="code">        -- NOTE: v_unique_id is sent as the x-unique-id HTTP header below.</span></div>
+<div id="L385" class="row cmt"><span class="ln"> 385</span><span class="code">        -- It is NOT stored in a dedicated column here because CRM_MPM_CRM_INTEGRATION_LOG's</span></div>
+<div id="L386" class="row cmt"><span class="ln"> 386</span><span class="code">        -- exact columns have not been independently re-verified for an X_UNIQUE_ID field.</span></div>
+<div id="L387" class="row cmt"><span class="ln"> 387</span><span class="code">        -- If traceability in the log table is needed, ADD a column first:</span></div>
+<div id="L388" class="row cmt"><span class="ln"> 388</span><span class="code">        --   ALTER TABLE CRM_MPM_CRM_INTEGRATION_LOG ADD X_UNIQUE_ID VARCHAR2(60);</span></div>
+<div id="L389" class="row cmt"><span class="ln"> 389</span><span class="code">        -- then add X_UNIQUE_ID to the INSERT below. Until then, the value is only</span></div>
+<div id="L390" class="row cmt"><span class="ln"> 390</span><span class="code">        -- visible in session trace / APIC's own logs by header inspection.</span></div>
+<div id="L391" class="row"><span class="ln"> 391</span><span class="code"></span></div>
+<div id="L392" class="row"><span class="ln"> 392</span><span class="code">        INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (</span></div>
+<div id="L393" class="row"><span class="ln"> 393</span><span class="code">            REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE, SOURCE_RECORD_ID,</span></div>
+<div id="L394" class="row"><span class="ln"> 394</span><span class="code">            TRANSACTION_GROUP_ID, ATTEMPT_NO,</span></div>
+<div id="L395" class="row"><span class="ln"> 395</span><span class="code">            REQUEST_PAYLOAD, SENT_DATE, FINAL_STATUS, X_UNIQUE_ID</span></div>
+<div id="L396" class="row"><span class="ln"> 396</span><span class="code">        ) VALUES (</span></div>
+<div id="L397" class="row"><span class="ln"> 397</span><span class="code">            p_registry_id, v_reg.ENTITY_NAME, v_reg.OPERATION_TYPE, p_key_value,</span></div>
+<div id="L398" class="row"><span class="ln"> 398</span><span class="code">            v_txn_group, p_attempt_no,</span></div>
+<div id="L399" class="row"><span class="ln"> 399</span><span class="code">            v_payload, SYSTIMESTAMP, 'PENDING', v_unique_id</span></div>
+<div id="L400" class="row"><span class="ln"> 400</span><span class="code">        ) RETURNING LOG_ID INTO v_log_id;</span></div>
+<div id="L401" class="row"><span class="ln"> 401</span><span class="code"></span></div>
+<div id="L402" class="row"><span class="ln"> 402</span><span class="code">        p_log_id_out := v_log_id;</span></div>
+<div id="L403" class="row"><span class="ln"> 403</span><span class="code"></span></div>
+<div id="L404" class="row"><span class="ln"> 404</span><span class="code">        BEGIN</span></div>
+<div id="L405" class="row"><span class="ln"> 405</span><span class="code">            v_token := GET_BEARER_TOKEN(v_reg.CRED_CODE);</span></div>
+<div id="L406" class="row"><span class="ln"> 406</span><span class="code"></span></div>
+<div id="L407" class="row cmt"><span class="ln"> 407</span><span class="code">            -- Fetch wallet path/password for this credential — needed for</span></div>
+<div id="L408" class="row cmt"><span class="ln"> 408</span><span class="code">            -- HTTPS calls to APIC, same wallet used for the token endpoint.</span></div>
+<div id="L409" class="row"><span class="ln"> 409</span><span class="code">            BEGIN</span></div>
+<div id="L410" class="row"><span class="ln"> 410</span><span class="code">                SELECT WALLET_PATH, WALLET_PASSWORD</span></div>
+<div id="L411" class="row"><span class="ln"> 411</span><span class="code">                INTO   v_wallet_path, v_wallet_password</span></div>
+<div id="L412" class="row"><span class="ln"> 412</span><span class="code">                FROM   CRM_MPM_API_CREDENTIALS</span></div>
+<div id="L413" class="row"><span class="ln"> 413</span><span class="code">                WHERE  CRED_CODE = v_reg.CRED_CODE;</span></div>
+<div id="L414" class="row"><span class="ln"> 414</span><span class="code">            EXCEPTION</span></div>
+<div id="L415" class="row"><span class="ln"> 415</span><span class="code">                WHEN NO_DATA_FOUND THEN</span></div>
+<div id="L416" class="row"><span class="ln"> 416</span><span class="code">                    v_wallet_path     := NULL;</span></div>
+<div id="L417" class="row"><span class="ln"> 417</span><span class="code">                    v_wallet_password := NULL;</span></div>
+<div id="L418" class="row"><span class="ln"> 418</span><span class="code">            END;</span></div>
+<div id="L419" class="row"><span class="ln"> 419</span><span class="code"></span></div>
+<div id="L420" class="row"><span class="ln"> 420</span><span class="code">            UTL_HTTP.SET_TRANSFER_TIMEOUT(60);</span></div>
+<div id="L421" class="row"><span class="ln"> 421</span><span class="code">            IF v_wallet_path IS NOT NULL THEN</span></div>
+<div id="L422" class="row"><span class="ln"> 422</span><span class="code">                UTL_HTTP.SET_WALLET(v_wallet_path, v_wallet_password);</span></div>
+<div id="L423" class="row"><span class="ln"> 423</span><span class="code">            END IF;</span></div>
+<div id="L424" class="row cmt"><span class="ln"> 424</span><span class="code">            -- Append api-version query param from registry (no hardcoding)</span></div>
+<div id="L425" class="row"><span class="ln"> 425</span><span class="code">            DECLARE</span></div>
+<div id="L426" class="row"><span class="ln"> 426</span><span class="code">                v_full_url VARCHAR2(1000);</span></div>
+<div id="L427" class="row"><span class="ln"> 427</span><span class="code">            BEGIN</span></div>
+<div id="L428" class="row"><span class="ln"> 428</span><span class="code">                v_full_url := v_reg.APIC_ENDPOINT_URL;</span></div>
+<div id="L429" class="row"><span class="ln"> 429</span><span class="code">                IF v_reg.APIC_API_VERSION IS NOT NULL THEN</span></div>
+<div id="L430" class="row"><span class="ln"> 430</span><span class="code">                    IF INSTR(v_full_url, '?') &gt; 0 THEN</span></div>
+<div id="L431" class="row"><span class="ln"> 431</span><span class="code">                        v_full_url := v_full_url || '&amp;api-version=' || v_reg.APIC_API_VERSION;</span></div>
+<div id="L432" class="row"><span class="ln"> 432</span><span class="code">                    ELSE</span></div>
+<div id="L433" class="row"><span class="ln"> 433</span><span class="code">                        v_full_url := v_full_url || '?api-version=' || v_reg.APIC_API_VERSION;</span></div>
+<div id="L434" class="row"><span class="ln"> 434</span><span class="code">                    END IF;</span></div>
+<div id="L435" class="row"><span class="ln"> 435</span><span class="code">                END IF;</span></div>
+<div id="L436" class="row"><span class="ln"> 436</span><span class="code">                v_http_req := UTL_HTTP.BEGIN_REQUEST(v_full_url, v_reg.HTTP_METHOD, 'HTTP/1.1');</span></div>
+<div id="L437" class="row"><span class="ln"> 437</span><span class="code">            END;</span></div>
+<div id="L438" class="row"><span class="ln"> 438</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type',           'application/json; charset=UTF-8');</span></div>
+<div id="L439" class="row"><span class="ln"> 439</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'Authorization',          'Bearer ' || v_token);</span></div>
+<div id="L440" class="row"><span class="ln"> 440</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'X-Transaction-Group-Id', v_txn_group);</span></div>
+<div id="L441" class="row cmt"><span class="ln"> 441</span><span class="code">            -- Dynamic headers from registry — no hardcoding in package</span></div>
+<div id="L442" class="row"><span class="ln"> 442</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'record-type',   v_reg.RECORD_TYPE_HDR);</span></div>
+<div id="L443" class="row"><span class="ln"> 443</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'record-action', v_reg.EVENT_CODE_HDR);</span></div>
+<div id="L444" class="row"><span class="ln"> 444</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'x-unique-id',            v_unique_id);</span></div>
+<div id="L445" class="row"><span class="ln"> 445</span><span class="code">            UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length',         DBMS_LOB.GETLENGTH(v_payload));</span></div>
+<div id="L446" class="row"><span class="ln"> 446</span><span class="code"></span></div>
+<div id="L447" class="row"><span class="ln"> 447</span><span class="code">            DECLARE</span></div>
+<div id="L448" class="row"><span class="ln"> 448</span><span class="code">                v_offset PLS_INTEGER := 1;</span></div>
+<div id="L449" class="row"><span class="ln"> 449</span><span class="code">                v_amount PLS_INTEGER := 8191; -- smaller chunk for RAW conversion</span></div>
+<div id="L450" class="row"><span class="ln"> 450</span><span class="code">                v_len    PLS_INTEGER := DBMS_LOB.GETLENGTH(v_payload);</span></div>
+<div id="L451" class="row"><span class="ln"> 451</span><span class="code">                v_chunk  VARCHAR2(32767);</span></div>
+<div id="L452" class="row"><span class="ln"> 452</span><span class="code">                v_raw    RAW(32767);</span></div>
+<div id="L453" class="row"><span class="ln"> 453</span><span class="code">            BEGIN</span></div>
+<div id="L454" class="row"><span class="ln"> 454</span><span class="code">                WHILE v_offset &lt;= v_len LOOP</span></div>
+<div id="L455" class="row"><span class="ln"> 455</span><span class="code">                    v_chunk  := DBMS_LOB.SUBSTR(v_payload, v_amount, v_offset);</span></div>
+<div id="L456" class="row cmt"><span class="ln"> 456</span><span class="code">                    -- Use WRITE_RAW with UTF8 conversion to correctly send</span></div>
+<div id="L457" class="row cmt"><span class="ln"> 457</span><span class="code">                    -- Arabic and other multi-byte characters</span></div>
+<div id="L458" class="row cmt"><span class="ln"> 458</span><span class="code">                    -- CONVERT ensures AL16UTF16 data is sent as proper UTF8</span></div>
+<div id="L459" class="row"><span class="ln"> 459</span><span class="code">                    v_raw    := UTL_RAW.CAST_TO_RAW(</span></div>
+<div id="L460" class="row"><span class="ln"> 460</span><span class="code">                                    CONVERT(v_chunk, 'UTF8', 'AL16UTF16'));</span></div>
+<div id="L461" class="row"><span class="ln"> 461</span><span class="code">                    UTL_HTTP.WRITE_RAW(v_http_req, v_raw);</span></div>
+<div id="L462" class="row"><span class="ln"> 462</span><span class="code">                    v_offset := v_offset + LENGTH(v_chunk);</span></div>
+<div id="L463" class="row"><span class="ln"> 463</span><span class="code">                END LOOP;</span></div>
+<div id="L464" class="row"><span class="ln"> 464</span><span class="code">            END;</span></div>
+<div id="L465" class="row"><span class="ln"> 465</span><span class="code"></span></div>
+<div id="L466" class="row"><span class="ln"> 466</span><span class="code">            v_http_resp   := UTL_HTTP.GET_RESPONSE(v_http_req);</span></div>
+<div id="L467" class="row"><span class="ln"> 467</span><span class="code">            v_status_code := TO_CHAR(v_http_resp.status_code);</span></div>
+<div id="L468" class="row"><span class="ln"> 468</span><span class="code"></span></div>
+<div id="L469" class="row"><span class="ln"> 469</span><span class="code">            DBMS_LOB.CREATETEMPORARY(v_response, TRUE);</span></div>
+<div id="L470" class="row"><span class="ln"> 470</span><span class="code">            BEGIN</span></div>
+<div id="L471" class="row"><span class="ln"> 471</span><span class="code">                LOOP</span></div>
+<div id="L472" class="row"><span class="ln"> 472</span><span class="code">                    UTL_HTTP.READ_TEXT(v_http_resp, v_buffer, 32767);</span></div>
+<div id="L473" class="row"><span class="ln"> 473</span><span class="code">                    DBMS_LOB.WRITEAPPEND(v_response, LENGTH(v_buffer), v_buffer);</span></div>
+<div id="L474" class="row"><span class="ln"> 474</span><span class="code">                END LOOP;</span></div>
+<div id="L475" class="row"><span class="ln"> 475</span><span class="code">            EXCEPTION</span></div>
+<div id="L476" class="row"><span class="ln"> 476</span><span class="code">                WHEN UTL_HTTP.END_OF_BODY THEN NULL;</span></div>
+<div id="L477" class="row"><span class="ln"> 477</span><span class="code">            END;</span></div>
+<div id="L478" class="row"><span class="ln"> 478</span><span class="code">            UTL_HTTP.END_RESPONSE(v_http_resp);</span></div>
+<div id="L479" class="row"><span class="ln"> 479</span><span class="code"></span></div>
+<div id="L480" class="row"><span class="ln"> 480</span><span class="code">            IF v_http_resp.status_code BETWEEN 200 AND 299 THEN</span></div>
+<div id="L481" class="row cmt"><span class="ln"> 481</span><span class="code">                -- HTTP OK — parse the CRM ACK JSON body for LEG 1 result.</span></div>
+<div id="L482" class="row cmt"><span class="ln"> 482</span><span class="code">                -- Confirmed LEG 1 ACK format (vendor confirmed 2026-07-01):</span></div>
+<div id="L483" class="row cmt"><span class="ln"> 483</span><span class="code">                -- { "request_id":"...", "status":"0000"/"9999",</span></div>
+<div id="L484" class="row cmt"><span class="ln"> 484</span><span class="code">                --   "description":"Success"/"Failed", "record_type":"...",</span></div>
+<div id="L485" class="row cmt"><span class="ln"> 485</span><span class="code">                --   "record_action":"...", "message":"...", "response_timestamp":"..." }</span></div>
+<div id="L486" class="row cmt"><span class="ln"> 486</span><span class="code">                -- status=0000 always unless header/auth issue (vendor confirmed).</span></div>
+<div id="L487" class="row cmt"><span class="ln"> 487</span><span class="code">                -- Business failures only come in LEG 2 via PROCESS_CRM_CALLBACK.</span></div>
+<div id="L488" class="row cmt"><span class="ln"> 488</span><span class="code">                -- request_id primary (spec). requestid fallback (live APIC response).</span></div>
+<div id="L489" class="row"><span class="ln"> 489</span><span class="code">                v_ack_request_id  := JSON_VALUE(v_response, '$.request_id');</span></div>
+<div id="L490" class="row"><span class="ln"> 490</span><span class="code">                IF v_ack_request_id IS NULL THEN</span></div>
+<div id="L491" class="row"><span class="ln"> 491</span><span class="code">                    v_ack_request_id := JSON_VALUE(v_response, '$.requestid');</span></div>
+<div id="L492" class="row"><span class="ln"> 492</span><span class="code">                END IF;</span></div>
+<div id="L493" class="row"><span class="ln"> 493</span><span class="code">                v_ack_status_code := JSON_VALUE(v_response, '$.status');</span></div>
+<div id="L494" class="row"><span class="ln"> 494</span><span class="code">                v_ack_description := JSON_VALUE(v_response, '$.description');</span></div>
+<div id="L495" class="row"><span class="ln"> 495</span><span class="code">                v_ack_message     := JSON_VALUE(v_response, '$.message');</span></div>
+<div id="L496" class="row cmt"><span class="ln"> 496</span><span class="code">                -- Parse response_timestamp into dedicated variable</span></div>
+<div id="L497" class="row"><span class="ln"> 497</span><span class="code">                v_ack_response_ts := JSON_VALUE(v_response, '$.response_timestamp');</span></div>
+<div id="L498" class="row"><span class="ln"> 498</span><span class="code"></span></div>
+<div id="L499" class="row cmt"><span class="ln"> 499</span><span class="code">                -- LEG 1 status: 0000=accepted (LEG 2 will follow), 9999=record not created in PxRM</span></div>
+<div id="L500" class="row"><span class="ln"> 500</span><span class="code">                IF NVL(v_ack_status_code,'0000') = '0000' THEN</span></div>
+<div id="L501" class="row"><span class="ln"> 501</span><span class="code">                    v_final_status  := 'SENT';</span></div>
+<div id="L502" class="row"><span class="ln"> 502</span><span class="code">                    v_error_code    := NULL;</span></div>
+<div id="L503" class="row"><span class="ln"> 503</span><span class="code">                    v_error_message := NULL;</span></div>
+<div id="L504" class="row"><span class="ln"> 504</span><span class="code">                ELSE</span></div>
+<div id="L505" class="row cmt"><span class="ln"> 505</span><span class="code">                    -- status=9999: CRM/PxRM failed to create the record — retryable</span></div>
+<div id="L506" class="row cmt"><span class="ln"> 506</span><span class="code">                    -- NOTE: confirmed by CRM team email — 9999 = failure, record not created</span></div>
+<div id="L507" class="row cmt"><span class="ln"> 507</span><span class="code">                    -- retry job must pick this up and re-push</span></div>
+<div id="L508" class="row"><span class="ln"> 508</span><span class="code">                    v_final_status  := 'FAILED';</span></div>
+<div id="L509" class="row"><span class="ln"> 509</span><span class="code">                    v_error_code    := 'FAILURE';</span></div>
+<div id="L510" class="row"><span class="ln"> 510</span><span class="code">                    v_error_message := 'PxRM rejected record (status=9999): ' ||</span></div>
+<div id="L511" class="row"><span class="ln"> 511</span><span class="code">                                       v_ack_description || ' | ' || v_ack_message;</span></div>
+<div id="L512" class="row"><span class="ln"> 512</span><span class="code">                END IF;</span></div>
+<div id="L513" class="row"><span class="ln"> 513</span><span class="code">            ELSIF v_http_resp.status_code IN (401, 403) THEN</span></div>
+<div id="L514" class="row"><span class="ln"> 514</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L515" class="row"><span class="ln"> 515</span><span class="code">                v_error_code    := 'AUTH_FAILED';</span></div>
+<div id="L516" class="row"><span class="ln"> 516</span><span class="code">                v_error_message := 'HTTP ' || v_status_code || ': ' ||</span></div>
+<div id="L517" class="row"><span class="ln"> 517</span><span class="code">                                   DBMS_LOB.SUBSTR(v_response, 2000, 1);</span></div>
+<div id="L518" class="row"><span class="ln"> 518</span><span class="code">            ELSIF v_http_resp.status_code BETWEEN 400 AND 499 THEN</span></div>
+<div id="L519" class="row"><span class="ln"> 519</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L520" class="row"><span class="ln"> 520</span><span class="code">                v_error_code    := 'VALIDATION_ERROR';</span></div>
+<div id="L521" class="row"><span class="ln"> 521</span><span class="code">                v_error_message := 'HTTP ' || v_status_code || ': ' ||</span></div>
+<div id="L522" class="row"><span class="ln"> 522</span><span class="code">                                   DBMS_LOB.SUBSTR(v_response, 2000, 1);</span></div>
+<div id="L523" class="row"><span class="ln"> 523</span><span class="code">            ELSE</span></div>
+<div id="L524" class="row"><span class="ln"> 524</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L525" class="row"><span class="ln"> 525</span><span class="code">                v_error_code    := 'APIC_ERROR';</span></div>
+<div id="L526" class="row"><span class="ln"> 526</span><span class="code">                v_error_message := 'HTTP ' || v_status_code || ': ' ||</span></div>
+<div id="L527" class="row"><span class="ln"> 527</span><span class="code">                                   DBMS_LOB.SUBSTR(v_response, 2000, 1);</span></div>
+<div id="L528" class="row"><span class="ln"> 528</span><span class="code">            END IF;</span></div>
+<div id="L529" class="row"><span class="ln"> 529</span><span class="code"></span></div>
+<div id="L530" class="row"><span class="ln"> 530</span><span class="code">        EXCEPTION</span></div>
+<div id="L531" class="row fix"><span class="ln"> 531</span><span class="code">            -- FIX: capture SQLERRM into local var before assigning to v_error_message</span></div>
+<div id="L532" class="row"><span class="ln"> 532</span><span class="code">            WHEN UTL_HTTP.TRANSFER_TIMEOUT THEN</span></div>
+<div id="L533" class="row"><span class="ln"> 533</span><span class="code">                v_err_msg := SQLERRM;</span></div>
+<div id="L534" class="row"><span class="ln"> 534</span><span class="code">                BEGIN UTL_HTTP.END_RESPONSE(v_http_resp); EXCEPTION WHEN OTHERS THEN NULL; END;</span></div>
+<div id="L535" class="row"><span class="ln"> 535</span><span class="code">                v_status_code   := NULL;</span></div>
+<div id="L536" class="row"><span class="ln"> 536</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L537" class="row"><span class="ln"> 537</span><span class="code">                v_error_code    := 'CONN_FAILED';</span></div>
+<div id="L538" class="row"><span class="ln"> 538</span><span class="code">                v_error_message := 'Connection timeout calling APIC: ' || v_err_msg;</span></div>
+<div id="L539" class="row"><span class="ln"> 539</span><span class="code">            WHEN UTL_HTTP.HTTP_CLIENT_ERROR OR UTL_HTTP.HTTP_SERVER_ERROR THEN</span></div>
+<div id="L540" class="row"><span class="ln"> 540</span><span class="code">                v_err_msg := SQLERRM;</span></div>
+<div id="L541" class="row"><span class="ln"> 541</span><span class="code">                BEGIN UTL_HTTP.END_RESPONSE(v_http_resp); EXCEPTION WHEN OTHERS THEN NULL; END;</span></div>
+<div id="L542" class="row"><span class="ln"> 542</span><span class="code">                v_status_code   := NULL;</span></div>
+<div id="L543" class="row"><span class="ln"> 543</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L544" class="row"><span class="ln"> 544</span><span class="code">                v_error_code    := 'APIC_ERROR';</span></div>
+<div id="L545" class="row"><span class="ln"> 545</span><span class="code">                v_error_message := 'HTTP client/server error: ' || v_err_msg;</span></div>
+<div id="L546" class="row"><span class="ln"> 546</span><span class="code">            WHEN OTHERS THEN</span></div>
+<div id="L547" class="row"><span class="ln"> 547</span><span class="code">                v_err_msg := SQLERRM;</span></div>
+<div id="L548" class="row"><span class="ln"> 548</span><span class="code">                BEGIN UTL_HTTP.END_RESPONSE(v_http_resp); EXCEPTION WHEN OTHERS THEN NULL; END;</span></div>
+<div id="L549" class="row"><span class="ln"> 549</span><span class="code">                v_status_code   := NULL;</span></div>
+<div id="L550" class="row"><span class="ln"> 550</span><span class="code">                v_final_status  := 'FAILED';</span></div>
+<div id="L551" class="row"><span class="ln"> 551</span><span class="code">                v_error_code    := 'UNKNOWN_ERROR';</span></div>
+<div id="L552" class="row"><span class="ln"> 552</span><span class="code">                v_error_message := 'Unexpected error: ' || v_err_msg;</span></div>
+<div id="L553" class="row"><span class="ln"> 553</span><span class="code">        END;</span></div>
+<div id="L554" class="row"><span class="ln"> 554</span><span class="code"></span></div>
+<div id="L555" class="row"><span class="ln"> 555</span><span class="code">        UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L556" class="row"><span class="ln"> 556</span><span class="code">        SET HTTP_STATUS_CODE = v_status_code,</span></div>
+<div id="L557" class="row"><span class="ln"> 557</span><span class="code">            ACK_RESPONSE     = v_response,</span></div>
+<div id="L558" class="row"><span class="ln"> 558</span><span class="code">            ACK_REQUEST_ID      = v_ack_request_id,    -- request_id from CRM ACK</span></div>
+<div id="L559" class="row"><span class="ln"> 559</span><span class="code">            ACK_STATUS_CODE     = v_ack_status_code,   -- '0000' or '9999'</span></div>
+<div id="L560" class="row"><span class="ln"> 560</span><span class="code">            ACK_DESCRIPTION     = v_ack_description,</span></div>
+<div id="L561" class="row"><span class="ln"> 561</span><span class="code">            ACK_RESPONSE_TIMESTAMP = v_ack_response_ts, -- response_timestamp from LEG 1</span></div>
+<div id="L562" class="row"><span class="ln"> 562</span><span class="code">            FINAL_STATUS        = v_final_status,</span></div>
+<div id="L563" class="row"><span class="ln"> 563</span><span class="code">            ERROR_CODE          = v_error_code,</span></div>
+<div id="L564" class="row"><span class="ln"> 564</span><span class="code">            ERROR_MESSAGE       = v_error_message,</span></div>
+<div id="L565" class="row"><span class="ln"> 565</span><span class="code">            X_UNIQUE_ID         = v_unique_id,</span></div>
+<div id="L566" class="row"><span class="ln"> 566</span><span class="code">            RETRY_COUNT         = p_attempt_no - 1,</span></div>
+<div id="L567" class="row"><span class="ln"> 567</span><span class="code">            UPDATED_DATE        = SYSTIMESTAMP</span></div>
+<div id="L568" class="row"><span class="ln"> 568</span><span class="code">        WHERE LOG_ID = v_log_id;</span></div>
+<div id="L569" class="row"><span class="ln"> 569</span><span class="code"></span></div>
+<div id="L570" class="row"><span class="ln"> 570</span><span class="code">        COMMIT;</span></div>
+<div id="L571" class="row"><span class="ln"> 571</span><span class="code"></span></div>
+<div id="L572" class="row"><span class="ln"> 572</span><span class="code">    EXCEPTION</span></div>
+<div id="L573" class="row"><span class="ln"> 573</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L574" class="row fix"><span class="ln"> 574</span><span class="code">            -- FIX: capture SQLERRM before embedding in UPDATE</span></div>
+<div id="L575" class="row"><span class="ln"> 575</span><span class="code">            v_err_msg := SQLERRM;</span></div>
+<div id="L576" class="row"><span class="ln"> 576</span><span class="code">            IF v_log_id IS NOT NULL THEN</span></div>
+<div id="L577" class="row"><span class="ln"> 577</span><span class="code">                UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L578" class="row"><span class="ln"> 578</span><span class="code">                SET FINAL_STATUS  = 'FAILED',</span></div>
+<div id="L579" class="row"><span class="ln"> 579</span><span class="code">                    ERROR_CODE    = 'UNKNOWN_ERROR',</span></div>
+<div id="L580" class="row"><span class="ln"> 580</span><span class="code">                    ERROR_MESSAGE = 'SEND_TO_APIC fatal error: ' || v_err_msg,</span></div>
+<div id="L581" class="row"><span class="ln"> 581</span><span class="code">                    UPDATED_DATE  = SYSTIMESTAMP</span></div>
+<div id="L582" class="row"><span class="ln"> 582</span><span class="code">                WHERE LOG_ID = v_log_id;</span></div>
+<div id="L583" class="row"><span class="ln"> 583</span><span class="code">                COMMIT;</span></div>
+<div id="L584" class="row"><span class="ln"> 584</span><span class="code">            END IF;</span></div>
+<div id="L585" class="row"><span class="ln"> 585</span><span class="code">            RAISE;</span></div>
+<div id="L586" class="row proc"><span class="ln"> 586</span><span class="code">    END SEND_TO_APIC;</span></div>
+<div id="L587" class="row"><span class="ln"> 587</span><span class="code"></span></div>
+<div id="L588" class="row"><span class="ln"> 588</span><span class="code"></span></div>
+<div id="L589" class="row"><span class="ln"> 589</span><span class="code">    /* ====================================================================</span></div>
+<div id="L590" class="row"><span class="ln"> 590</span><span class="code">       RUN_OUTBOUND_JOB</span></div>
+<div id="L591" class="row"><span class="ln"> 591</span><span class="code">       ==================================================================== */</span></div>
+<div id="L592" class="row proc"><span class="ln"> 592</span><span class="code">    PROCEDURE RUN_OUTBOUND_JOB IS</span></div>
+<div id="L593" class="row"><span class="ln"> 593</span><span class="code">        v_run_id     NUMBER;</span></div>
+<div id="L594" class="row"><span class="ln"> 594</span><span class="code">        v_processed  NUMBER := 0;</span></div>
+<div id="L595" class="row"><span class="ln"> 595</span><span class="code">        v_success    NUMBER := 0;</span></div>
+<div id="L596" class="row"><span class="ln"> 596</span><span class="code">        v_failed     NUMBER := 0;</span></div>
+<div id="L597" class="row"><span class="ln"> 597</span><span class="code">        v_max_ts     TIMESTAMP;</span></div>
+<div id="L598" class="row"><span class="ln"> 598</span><span class="code">        v_log_id     NUMBER;</span></div>
+<div id="L599" class="row"><span class="ln"> 599</span><span class="code">        v_cursor_id  INTEGER;</span></div>
+<div id="L600" class="row"><span class="ln"> 600</span><span class="code">        v_sql        VARCHAR2(4000);</span></div>
+<div id="L601" class="row"><span class="ln"> 601</span><span class="code">        v_key_val    VARCHAR2(4000);</span></div>
+<div id="L602" class="row"><span class="ln"> 602</span><span class="code">        v_filter_val VARCHAR2(4000);</span></div>
+<div id="L603" class="row"><span class="ln"> 603</span><span class="code">        v_status     VARCHAR2(20);</span></div>
+<div id="L604" class="row fix"><span class="ln"> 604</span><span class="code">        -- FIX: local var to capture SQLERRM before DML</span></div>
+<div id="L605" class="row"><span class="ln"> 605</span><span class="code">        v_err_msg    VARCHAR2(4000);</span></div>
+<div id="L606" class="row"><span class="ln"> 606</span><span class="code">    BEGIN</span></div>
+<div id="L607" class="row cmt"><span class="ln"> 607</span><span class="code">        -- ----------------------------------------------------------------</span></div>
+<div id="L608" class="row cmt"><span class="ln"> 608</span><span class="code">        -- JOB-LOCK GUARD: prevent concurrent overlapping executions.</span></div>
+<div id="L609" class="row cmt"><span class="ln"> 609</span><span class="code">        -- If another OUTBOUND_PUSH has been RUNNING for more than 5 minutes</span></div>
+<div id="L610" class="row cmt"><span class="ln"> 610</span><span class="code">        -- (i.e. it is a real overlap, not the current insert we are about to do)</span></div>
+<div id="L611" class="row cmt"><span class="ln"> 611</span><span class="code">        -- skip this invocation entirely.</span></div>
+<div id="L612" class="row cmt"><span class="ln"> 612</span><span class="code">        -- ----------------------------------------------------------------</span></div>
+<div id="L613" class="row"><span class="ln"> 613</span><span class="code">        DECLARE</span></div>
+<div id="L614" class="row"><span class="ln"> 614</span><span class="code">            v_running_count NUMBER;</span></div>
+<div id="L615" class="row"><span class="ln"> 615</span><span class="code">        BEGIN</span></div>
+<div id="L616" class="row"><span class="ln"> 616</span><span class="code">            SELECT COUNT(*) INTO v_running_count</span></div>
+<div id="L617" class="row"><span class="ln"> 617</span><span class="code">            FROM CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L618" class="row"><span class="ln"> 618</span><span class="code">            WHERE JOB_NAME   = 'OUTBOUND_PUSH'</span></div>
+<div id="L619" class="row"><span class="ln"> 619</span><span class="code">              AND STATUS      = 'RUNNING'</span></div>
+<div id="L620" class="row"><span class="ln"> 620</span><span class="code">              AND START_TIME  &lt; SYSTIMESTAMP - (5/1440); -- older than 5 min = real overlap</span></div>
+<div id="L621" class="row"><span class="ln"> 621</span><span class="code"></span></div>
+<div id="L622" class="row"><span class="ln"> 622</span><span class="code">            IF v_running_count &gt; 0 THEN</span></div>
+<div id="L623" class="row"><span class="ln"> 623</span><span class="code">                RETURN; -- previous run still active, skip this invocation</span></div>
+<div id="L624" class="row"><span class="ln"> 624</span><span class="code">            END IF;</span></div>
+<div id="L625" class="row"><span class="ln"> 625</span><span class="code">        END;</span></div>
+<div id="L626" class="row"><span class="ln"> 626</span><span class="code"></span></div>
+<div id="L627" class="row"><span class="ln"> 627</span><span class="code">        INSERT INTO CRM_MPM_JOB_RUN_HISTORY (JOB_NAME, STATUS)</span></div>
+<div id="L628" class="row"><span class="ln"> 628</span><span class="code">        VALUES ('OUTBOUND_PUSH', 'RUNNING')</span></div>
+<div id="L629" class="row"><span class="ln"> 629</span><span class="code">        RETURNING RUN_ID INTO v_run_id;</span></div>
+<div id="L630" class="row"><span class="ln"> 630</span><span class="code">        COMMIT;</span></div>
+<div id="L631" class="row"><span class="ln"> 631</span><span class="code"></span></div>
+<div id="L632" class="row"><span class="ln"> 632</span><span class="code">        FOR reg IN (</span></div>
+<div id="L633" class="row"><span class="ln"> 633</span><span class="code">            SELECT r.*, w.LAST_PROCESSED_TS</span></div>
+<div id="L634" class="row"><span class="ln"> 634</span><span class="code">            FROM CRM_MPM_API_REGISTRY r</span></div>
+<div id="L635" class="row"><span class="ln"> 635</span><span class="code">            JOIN CRM_MPM_API_WATERMARK w ON w.REGISTRY_ID = r.REGISTRY_ID</span></div>
+<div id="L636" class="row"><span class="ln"> 636</span><span class="code">            WHERE r.IS_ACTIVE = 'Y'</span></div>
+<div id="L637" class="row"><span class="ln"> 637</span><span class="code">        ) LOOP</span></div>
+<div id="L638" class="row"><span class="ln"> 638</span><span class="code"></span></div>
+<div id="L639" class="row"><span class="ln"> 639</span><span class="code">            v_max_ts := reg.LAST_PROCESSED_TS;</span></div>
+<div id="L640" class="row"><span class="ln"> 640</span><span class="code"></span></div>
+<div id="L641" class="row"><span class="ln"> 641</span><span class="code">            v_sql := 'SELECT ' || reg.SOURCE_KEY_COL || ', ' || reg.SOURCE_FILTER_COL ||</span></div>
+<div id="L642" class="row"><span class="ln"> 642</span><span class="code">                     ' FROM '  || reg.SOURCE_VIEW ||</span></div>
+<div id="L643" class="row"><span class="ln"> 643</span><span class="code">                     ' WHERE ' || reg.SOURCE_FILTER_COL || ' &gt; :wm' ||</span></div>
+<div id="L644" class="row"><span class="ln"> 644</span><span class="code">                     ' ORDER BY ' || reg.SOURCE_FILTER_COL;</span></div>
+<div id="L645" class="row"><span class="ln"> 645</span><span class="code"></span></div>
+<div id="L646" class="row"><span class="ln"> 646</span><span class="code">            v_cursor_id := DBMS_SQL.OPEN_CURSOR;</span></div>
+<div id="L647" class="row"><span class="ln"> 647</span><span class="code">            DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);</span></div>
+<div id="L648" class="row"><span class="ln"> 648</span><span class="code">            DBMS_SQL.BIND_VARIABLE(v_cursor_id, ':wm', reg.LAST_PROCESSED_TS);</span></div>
+<div id="L649" class="row"><span class="ln"> 649</span><span class="code">            DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_key_val,    4000);</span></div>
+<div id="L650" class="row"><span class="ln"> 650</span><span class="code">            DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 2, v_filter_val, 4000);</span></div>
+<div id="L651" class="row fix"><span class="ln"> 651</span><span class="code">            -- FIX: DBMS_SQL.EXECUTE is a FUNCTION returning INTEGER; must capture return value</span></div>
+<div id="L652" class="row"><span class="ln"> 652</span><span class="code">            DECLARE v_exec_rows INTEGER; BEGIN v_exec_rows := DBMS_SQL.EXECUTE(v_cursor_id); END;</span></div>
+<div id="L653" class="row"><span class="ln"> 653</span><span class="code"></span></div>
+<div id="L654" class="row"><span class="ln"> 654</span><span class="code">            LOOP</span></div>
+<div id="L655" class="row"><span class="ln"> 655</span><span class="code">                EXIT WHEN DBMS_SQL.FETCH_ROWS(v_cursor_id) = 0;</span></div>
+<div id="L656" class="row"><span class="ln"> 656</span><span class="code"></span></div>
+<div id="L657" class="row"><span class="ln"> 657</span><span class="code">                DBMS_SQL.COLUMN_VALUE(v_cursor_id, 1, v_key_val);</span></div>
+<div id="L658" class="row"><span class="ln"> 658</span><span class="code">                DBMS_SQL.COLUMN_VALUE(v_cursor_id, 2, v_filter_val);</span></div>
+<div id="L659" class="row"><span class="ln"> 659</span><span class="code"></span></div>
+<div id="L660" class="row"><span class="ln"> 660</span><span class="code">                v_processed := v_processed + 1;</span></div>
+<div id="L661" class="row"><span class="ln"> 661</span><span class="code"></span></div>
+<div id="L662" class="row"><span class="ln"> 662</span><span class="code">                BEGIN</span></div>
+<div id="L663" class="row"><span class="ln"> 663</span><span class="code">                    SEND_TO_APIC(</span></div>
+<div id="L664" class="row"><span class="ln"> 664</span><span class="code">                        p_registry_id =&gt; reg.REGISTRY_ID,</span></div>
+<div id="L665" class="row"><span class="ln"> 665</span><span class="code">                        p_key_value   =&gt; v_key_val,</span></div>
+<div id="L666" class="row"><span class="ln"> 666</span><span class="code">                        p_attempt_no  =&gt; 1,</span></div>
+<div id="L667" class="row"><span class="ln"> 667</span><span class="code">                        p_log_id_out  =&gt; v_log_id</span></div>
+<div id="L668" class="row"><span class="ln"> 668</span><span class="code">                    );</span></div>
+<div id="L669" class="row"><span class="ln"> 669</span><span class="code"></span></div>
+<div id="L670" class="row fix"><span class="ln"> 670</span><span class="code">                    -- FIX: use separate variable v_status instead of reusing v_filter_val</span></div>
+<div id="L671" class="row"><span class="ln"> 671</span><span class="code">                    SELECT FINAL_STATUS INTO v_status</span></div>
+<div id="L672" class="row"><span class="ln"> 672</span><span class="code">                    FROM CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L673" class="row"><span class="ln"> 673</span><span class="code">                    WHERE LOG_ID = v_log_id;</span></div>
+<div id="L674" class="row"><span class="ln"> 674</span><span class="code"></span></div>
+<div id="L675" class="row"><span class="ln"> 675</span><span class="code">                    IF v_status = 'SENT' THEN</span></div>
+<div id="L676" class="row"><span class="ln"> 676</span><span class="code">                        v_success := v_success + 1;</span></div>
+<div id="L677" class="row cmt"><span class="ln"> 677</span><span class="code">                        -- ------------------------------------------------</span></div>
+<div id="L678" class="row cmt"><span class="ln"> 678</span><span class="code">                        -- WATERMARK ADVANCE PER ROW (Fix 3 — crash safety)</span></div>
+<div id="L679" class="row cmt"><span class="ln"> 679</span><span class="code">                        -- Advance immediately after each successful send so</span></div>
+<div id="L680" class="row cmt"><span class="ln"> 680</span><span class="code">                        -- a mid-run crash never re-sends already-sent rows.</span></div>
+<div id="L681" class="row cmt"><span class="ln"> 681</span><span class="code">                        -- v_filter_val holds the SOURCE_FILTER_COL value for</span></div>
+<div id="L682" class="row cmt"><span class="ln"> 682</span><span class="code">                        -- this row (fetched as VARCHAR2 via DBMS_SQL above).</span></div>
+<div id="L683" class="row cmt"><span class="ln"> 683</span><span class="code">                        -- ------------------------------------------------</span></div>
+<div id="L684" class="row"><span class="ln"> 684</span><span class="code">                        BEGIN</span></div>
+<div id="L685" class="row"><span class="ln"> 685</span><span class="code">                            UPDATE CRM_MPM_API_WATERMARK</span></div>
+<div id="L686" class="row"><span class="ln"> 686</span><span class="code">                            SET LAST_PROCESSED_TS = TO_TIMESTAMP(v_filter_val,</span></div>
+<div id="L687" class="row"><span class="ln"> 687</span><span class="code">                                                        'YYYY-MM-DD HH24:MI:SS.FF6'),</span></div>
+<div id="L688" class="row"><span class="ln"> 688</span><span class="code">                                UPDATED_DATE      = SYSTIMESTAMP</span></div>
+<div id="L689" class="row"><span class="ln"> 689</span><span class="code">                            WHERE REGISTRY_ID     = reg.REGISTRY_ID</span></div>
+<div id="L690" class="row"><span class="ln"> 690</span><span class="code">                              AND (LAST_PROCESSED_TS IS NULL</span></div>
+<div id="L691" class="row"><span class="ln"> 691</span><span class="code">                                   OR LAST_PROCESSED_TS &lt; TO_TIMESTAMP(v_filter_val,</span></div>
+<div id="L692" class="row"><span class="ln"> 692</span><span class="code">                                                              'YYYY-MM-DD HH24:MI:SS.FF6'));</span></div>
+<div id="L693" class="row"><span class="ln"> 693</span><span class="code">                        EXCEPTION</span></div>
+<div id="L694" class="row"><span class="ln"> 694</span><span class="code">                            WHEN OTHERS THEN NULL; -- non-fatal; end-of-loop update covers it</span></div>
+<div id="L695" class="row"><span class="ln"> 695</span><span class="code">                        END;</span></div>
+<div id="L696" class="row"><span class="ln"> 696</span><span class="code">                    ELSE</span></div>
+<div id="L697" class="row"><span class="ln"> 697</span><span class="code">                        v_failed := v_failed + 1;</span></div>
+<div id="L698" class="row"><span class="ln"> 698</span><span class="code">                    END IF;</span></div>
+<div id="L699" class="row"><span class="ln"> 699</span><span class="code"></span></div>
+<div id="L700" class="row"><span class="ln"> 700</span><span class="code">                EXCEPTION</span></div>
+<div id="L701" class="row"><span class="ln"> 701</span><span class="code">                    WHEN OTHERS THEN</span></div>
+<div id="L702" class="row"><span class="ln"> 702</span><span class="code">                        v_failed := v_failed + 1;</span></div>
+<div id="L703" class="row"><span class="ln"> 703</span><span class="code">                END;</span></div>
+<div id="L704" class="row"><span class="ln"> 704</span><span class="code">            END LOOP;</span></div>
+<div id="L705" class="row"><span class="ln"> 705</span><span class="code"></span></div>
+<div id="L706" class="row"><span class="ln"> 706</span><span class="code">            DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L707" class="row"><span class="ln"> 707</span><span class="code"></span></div>
+<div id="L708" class="row cmt"><span class="ln"> 708</span><span class="code">            -- Final watermark update (covers edge case where filter_col is</span></div>
+<div id="L709" class="row cmt"><span class="ln"> 709</span><span class="code">            -- not a parseable TIMESTAMP string — falls back to MAX query).</span></div>
+<div id="L710" class="row"><span class="ln"> 710</span><span class="code">            BEGIN</span></div>
+<div id="L711" class="row"><span class="ln"> 711</span><span class="code">                EXECUTE IMMEDIATE</span></div>
+<div id="L712" class="row"><span class="ln"> 712</span><span class="code">                    'SELECT MAX(' || reg.SOURCE_FILTER_COL || ') FROM ' || reg.SOURCE_VIEW ||</span></div>
+<div id="L713" class="row"><span class="ln"> 713</span><span class="code">                    ' WHERE ' || reg.SOURCE_FILTER_COL || ' &gt; :wm'</span></div>
+<div id="L714" class="row"><span class="ln"> 714</span><span class="code">                    INTO v_max_ts</span></div>
+<div id="L715" class="row"><span class="ln"> 715</span><span class="code">                    USING reg.LAST_PROCESSED_TS;</span></div>
+<div id="L716" class="row"><span class="ln"> 716</span><span class="code"></span></div>
+<div id="L717" class="row"><span class="ln"> 717</span><span class="code">                IF v_max_ts IS NOT NULL THEN</span></div>
+<div id="L718" class="row"><span class="ln"> 718</span><span class="code">                    UPDATE CRM_MPM_API_WATERMARK</span></div>
+<div id="L719" class="row"><span class="ln"> 719</span><span class="code">                    SET LAST_PROCESSED_TS = v_max_ts,</span></div>
+<div id="L720" class="row"><span class="ln"> 720</span><span class="code">                        LAST_RUN_STATUS   = 'COMPLETED',</span></div>
+<div id="L721" class="row"><span class="ln"> 721</span><span class="code">                        LAST_RUN_RECORDS  = v_processed,</span></div>
+<div id="L722" class="row"><span class="ln"> 722</span><span class="code">                        UPDATED_DATE      = SYSTIMESTAMP</span></div>
+<div id="L723" class="row"><span class="ln"> 723</span><span class="code">                    WHERE REGISTRY_ID = reg.REGISTRY_ID;</span></div>
+<div id="L724" class="row"><span class="ln"> 724</span><span class="code">                END IF;</span></div>
+<div id="L725" class="row"><span class="ln"> 725</span><span class="code">            EXCEPTION</span></div>
+<div id="L726" class="row"><span class="ln"> 726</span><span class="code">                WHEN OTHERS THEN</span></div>
+<div id="L727" class="row"><span class="ln"> 727</span><span class="code">                    v_err_msg := SQLERRM;</span></div>
+<div id="L728" class="row"><span class="ln"> 728</span><span class="code">                    UPDATE CRM_MPM_API_WATERMARK</span></div>
+<div id="L729" class="row"><span class="ln"> 729</span><span class="code">                    SET LAST_RUN_STATUS = 'ERROR: ' || SUBSTR(v_err_msg, 1, 200)</span></div>
+<div id="L730" class="row"><span class="ln"> 730</span><span class="code">                    WHERE REGISTRY_ID = reg.REGISTRY_ID;</span></div>
+<div id="L731" class="row"><span class="ln"> 731</span><span class="code">            END;</span></div>
+<div id="L732" class="row"><span class="ln"> 732</span><span class="code"></span></div>
+<div id="L733" class="row"><span class="ln"> 733</span><span class="code">            COMMIT;</span></div>
+<div id="L734" class="row"><span class="ln"> 734</span><span class="code">        END LOOP;</span></div>
+<div id="L735" class="row"><span class="ln"> 735</span><span class="code"></span></div>
+<div id="L736" class="row"><span class="ln"> 736</span><span class="code">        UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L737" class="row"><span class="ln"> 737</span><span class="code">        SET END_TIME         = SYSTIMESTAMP,</span></div>
+<div id="L738" class="row"><span class="ln"> 738</span><span class="code">            RECORDS_PROCESSED = v_processed,</span></div>
+<div id="L739" class="row"><span class="ln"> 739</span><span class="code">            RECORDS_SUCCESS   = v_success,</span></div>
+<div id="L740" class="row"><span class="ln"> 740</span><span class="code">            RECORDS_FAILED    = v_failed,</span></div>
+<div id="L741" class="row"><span class="ln"> 741</span><span class="code">            STATUS            = 'COMPLETED'</span></div>
+<div id="L742" class="row"><span class="ln"> 742</span><span class="code">        WHERE RUN_ID = v_run_id;</span></div>
+<div id="L743" class="row"><span class="ln"> 743</span><span class="code">        COMMIT;</span></div>
+<div id="L744" class="row"><span class="ln"> 744</span><span class="code"></span></div>
+<div id="L745" class="row"><span class="ln"> 745</span><span class="code">    EXCEPTION</span></div>
+<div id="L746" class="row"><span class="ln"> 746</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L747" class="row"><span class="ln"> 747</span><span class="code">            v_err_msg := SQLERRM;</span></div>
+<div id="L748" class="row"><span class="ln"> 748</span><span class="code">            IF DBMS_SQL.IS_OPEN(v_cursor_id) THEN</span></div>
+<div id="L749" class="row"><span class="ln"> 749</span><span class="code">                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);</span></div>
+<div id="L750" class="row"><span class="ln"> 750</span><span class="code">            END IF;</span></div>
+<div id="L751" class="row"><span class="ln"> 751</span><span class="code">            UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L752" class="row"><span class="ln"> 752</span><span class="code">            SET END_TIME      = SYSTIMESTAMP,</span></div>
+<div id="L753" class="row"><span class="ln"> 753</span><span class="code">                STATUS        = 'ERROR',</span></div>
+<div id="L754" class="row"><span class="ln"> 754</span><span class="code">                ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000)</span></div>
+<div id="L755" class="row"><span class="ln"> 755</span><span class="code">            WHERE RUN_ID = v_run_id;</span></div>
+<div id="L756" class="row"><span class="ln"> 756</span><span class="code">            COMMIT;</span></div>
+<div id="L757" class="row"><span class="ln"> 757</span><span class="code">            RAISE;</span></div>
+<div id="L758" class="row proc"><span class="ln"> 758</span><span class="code">    END RUN_OUTBOUND_JOB;</span></div>
+<div id="L759" class="row"><span class="ln"> 759</span><span class="code"></span></div>
+<div id="L760" class="row"><span class="ln"> 760</span><span class="code"></span></div>
+<div id="L761" class="row"><span class="ln"> 761</span><span class="code">    /* ====================================================================</span></div>
+<div id="L762" class="row"><span class="ln"> 762</span><span class="code">       PROCESS_CRM_CALLBACK</span></div>
+<div id="L763" class="row"><span class="ln"> 763</span><span class="code">       ==================================================================== */</span></div>
+<div id="L764" class="row proc"><span class="ln"> 764</span><span class="code">    PROCEDURE PROCESS_CRM_CALLBACK(</span></div>
+<div id="L765" class="row"><span class="ln"> 765</span><span class="code">        p_service_name     IN  VARCHAR2,</span></div>
+<div id="L766" class="row"><span class="ln"> 766</span><span class="code">        p_callback_payload IN  CLOB,</span></div>
+<div id="L767" class="row"><span class="ln"> 767</span><span class="code">        p_result_out       OUT VARCHAR2,   -- full JSON response</span></div>
+<div id="L768" class="row"><span class="ln"> 768</span><span class="code">        p_status_code      OUT VARCHAR2,   -- 'OK' or 'ERROR'</span></div>
+<div id="L769" class="row"><span class="ln"> 769</span><span class="code">        p_description      OUT VARCHAR2,   -- human readable description</span></div>
+<div id="L770" class="row"><span class="ln"> 770</span><span class="code">        p_x_unique_id      IN  VARCHAR2 DEFAULT NULL,</span></div>
+<div id="L771" class="row"><span class="ln"> 771</span><span class="code">        p_channel_id       IN  VARCHAR2 DEFAULT NULL</span></div>
+<div id="L772" class="row"><span class="ln"> 772</span><span class="code">    ) IS</span></div>
+<div id="L773" class="row"><span class="ln"> 773</span><span class="code">        v_crm_reference    VARCHAR2(200);</span></div>
+<div id="L774" class="row"><span class="ln"> 774</span><span class="code">        v_reg              CRM_MPM_API_REGISTRY%ROWTYPE;</span></div>
+<div id="L775" class="row"><span class="ln"> 775</span><span class="code">        v_log_id           NUMBER;</span></div>
+<div id="L776" class="row"><span class="ln"> 776</span><span class="code">        v_final_status     VARCHAR2(20);</span></div>
+<div id="L777" class="row"><span class="ln"> 777</span><span class="code">        v_error_code       VARCHAR2(30);</span></div>
+<div id="L778" class="row"><span class="ln"> 778</span><span class="code">        v_callback_message VARCHAR2(4000);</span></div>
+<div id="L779" class="row"><span class="ln"> 779</span><span class="code">        v_current_status   VARCHAR2(20);</span></div>
+<div id="L780" class="row"><span class="ln"> 780</span><span class="code">        v_sql              VARCHAR2(1000);</span></div>
+<div id="L781" class="row"><span class="ln"> 781</span><span class="code">        v_audit_id         NUMBER;  -- row in CRM_MPM_CALLBACK_AUDIT_LOG</span></div>
+<div id="L782" class="row"><span class="ln"> 782</span><span class="code"></span></div>
+<div id="L783" class="row cmt"><span class="ln"> 783</span><span class="code">        -- ── Write audit row — every callback receives this FIRST ──────────</span></div>
+<div id="L784" class="row"><span class="ln"> 784</span><span class="code">        PROCEDURE WRITE_AUDIT(</span></div>
+<div id="L785" class="row"><span class="ln"> 785</span><span class="code">            p_status    IN VARCHAR2,</span></div>
+<div id="L786" class="row"><span class="ln"> 786</span><span class="code">            p_msg       IN VARCHAR2,</span></div>
+<div id="L787" class="row"><span class="ln"> 787</span><span class="code">            p_log_id    IN NUMBER   DEFAULT NULL,</span></div>
+<div id="L788" class="row"><span class="ln"> 788</span><span class="code">            p_response  IN VARCHAR2 DEFAULT NULL,</span></div>
+<div id="L789" class="row"><span class="ln"> 789</span><span class="code">            p_scode     IN VARCHAR2 DEFAULT NULL,</span></div>
+<div id="L790" class="row"><span class="ln"> 790</span><span class="code">            p_desc      IN VARCHAR2 DEFAULT NULL</span></div>
+<div id="L791" class="row"><span class="ln"> 791</span><span class="code">        ) IS</span></div>
+<div id="L792" class="row"><span class="ln"> 792</span><span class="code">            PRAGMA AUTONOMOUS_TRANSACTION;</span></div>
+<div id="L793" class="row"><span class="ln"> 793</span><span class="code">        BEGIN</span></div>
+<div id="L794" class="row"><span class="ln"> 794</span><span class="code">            IF v_audit_id IS NULL THEN</span></div>
+<div id="L795" class="row"><span class="ln"> 795</span><span class="code">                INSERT INTO CRM_MPM_CALLBACK_AUDIT_LOG (</span></div>
+<div id="L796" class="row"><span class="ln"> 796</span><span class="code">                    SERVICE_NAME, X_UNIQUE_ID, CHANNEL_ID,</span></div>
+<div id="L797" class="row"><span class="ln"> 797</span><span class="code">                    REQUEST_ID, STATUS_CODE, RESULT_CODE,</span></div>
+<div id="L798" class="row"><span class="ln"> 798</span><span class="code">                    PROCESSING_STATUS, PROCESSING_MSG,</span></div>
+<div id="L799" class="row"><span class="ln"> 799</span><span class="code">                    MATCHED_LOG_ID, RESPONSE_SENT,</span></div>
+<div id="L800" class="row"><span class="ln"> 800</span><span class="code">                    STATUS_CODE_SENT, DESCRIPTION_SENT,</span></div>
+<div id="L801" class="row"><span class="ln"> 801</span><span class="code">                    RAW_PAYLOAD</span></div>
+<div id="L802" class="row"><span class="ln"> 802</span><span class="code">                ) VALUES (</span></div>
+<div id="L803" class="row"><span class="ln"> 803</span><span class="code">                    p_service_name, p_x_unique_id, p_channel_id,</span></div>
+<div id="L804" class="row"><span class="ln"> 804</span><span class="code">                    JSON_VALUE(p_callback_payload, '$.request_id'),</span></div>
+<div id="L805" class="row"><span class="ln"> 805</span><span class="code">                    JSON_VALUE(p_callback_payload, '$.status'),</span></div>
+<div id="L806" class="row"><span class="ln"> 806</span><span class="code">                    JSON_VALUE(p_callback_payload, '$.processing_result.result_code'),</span></div>
+<div id="L807" class="row"><span class="ln"> 807</span><span class="code">                    p_status, SUBSTR(p_msg, 1, 500),</span></div>
+<div id="L808" class="row"><span class="ln"> 808</span><span class="code">                    p_log_id, p_response,</span></div>
+<div id="L809" class="row"><span class="ln"> 809</span><span class="code">                    p_scode, SUBSTR(p_desc, 1, 500),</span></div>
+<div id="L810" class="row"><span class="ln"> 810</span><span class="code">                    p_callback_payload</span></div>
+<div id="L811" class="row"><span class="ln"> 811</span><span class="code">                ) RETURNING AUDIT_ID INTO v_audit_id;</span></div>
+<div id="L812" class="row"><span class="ln"> 812</span><span class="code">            ELSE</span></div>
+<div id="L813" class="row"><span class="ln"> 813</span><span class="code">                UPDATE CRM_MPM_CALLBACK_AUDIT_LOG</span></div>
+<div id="L814" class="row"><span class="ln"> 814</span><span class="code">                SET PROCESSING_STATUS = p_status,</span></div>
+<div id="L815" class="row"><span class="ln"> 815</span><span class="code">                    PROCESSING_MSG    = SUBSTR(p_msg, 1, 500),</span></div>
+<div id="L816" class="row"><span class="ln"> 816</span><span class="code">                    MATCHED_LOG_ID    = NVL(p_log_id, MATCHED_LOG_ID),</span></div>
+<div id="L817" class="row"><span class="ln"> 817</span><span class="code">                    RESPONSE_SENT     = NVL(p_response, RESPONSE_SENT),</span></div>
+<div id="L818" class="row"><span class="ln"> 818</span><span class="code">                    STATUS_CODE_SENT  = NVL(p_scode,    STATUS_CODE_SENT),</span></div>
+<div id="L819" class="row"><span class="ln"> 819</span><span class="code">                    DESCRIPTION_SENT  = NVL(SUBSTR(p_desc,1,500), DESCRIPTION_SENT)</span></div>
+<div id="L820" class="row"><span class="ln"> 820</span><span class="code">                WHERE AUDIT_ID = v_audit_id;</span></div>
+<div id="L821" class="row"><span class="ln"> 821</span><span class="code">            END IF;</span></div>
+<div id="L822" class="row"><span class="ln"> 822</span><span class="code">            COMMIT;</span></div>
+<div id="L823" class="row"><span class="ln"> 823</span><span class="code">        EXCEPTION</span></div>
+<div id="L824" class="row"><span class="ln"> 824</span><span class="code">            WHEN OTHERS THEN NULL;</span></div>
+<div id="L825" class="row"><span class="ln"> 825</span><span class="code">        END WRITE_AUDIT;</span></div>
+<div id="L826" class="row"><span class="ln"> 826</span><span class="code"></span></div>
+<div id="L827" class="row cmt"><span class="ln"> 827</span><span class="code">        -- ── Read callback status code from master table ────────────────</span></div>
+<div id="L828" class="row"><span class="ln"> 828</span><span class="code">        FUNCTION GET_CB_CODE(p_code IN VARCHAR2) RETURN VARCHAR2 IS</span></div>
+<div id="L829" class="row"><span class="ln"> 829</span><span class="code">            v_code VARCHAR2(20);</span></div>
+<div id="L830" class="row"><span class="ln"> 830</span><span class="code">        BEGIN</span></div>
+<div id="L831" class="row"><span class="ln"> 831</span><span class="code">            SELECT ERROR_CODE INTO v_code</span></div>
+<div id="L832" class="row"><span class="ln"> 832</span><span class="code">            FROM CRM_MPM_ERROR_CODE_MASTER</span></div>
+<div id="L833" class="row"><span class="ln"> 833</span><span class="code">            WHERE ERROR_CODE = p_code;</span></div>
+<div id="L834" class="row"><span class="ln"> 834</span><span class="code">            RETURN v_code;</span></div>
+<div id="L835" class="row"><span class="ln"> 835</span><span class="code">        EXCEPTION</span></div>
+<div id="L836" class="row"><span class="ln"> 836</span><span class="code">            WHEN NO_DATA_FOUND THEN RETURN p_code;</span></div>
+<div id="L837" class="row"><span class="ln"> 837</span><span class="code">            WHEN OTHERS THEN RETURN p_code;</span></div>
+<div id="L838" class="row"><span class="ln"> 838</span><span class="code">        END GET_CB_CODE;</span></div>
+<div id="L839" class="row"><span class="ln"> 839</span><span class="code"></span></div>
+<div id="L840" class="row"><span class="ln"> 840</span><span class="code">    BEGIN</span></div>
+<div id="L841" class="row cmt"><span class="ln"> 841</span><span class="code">        -- ── LEVEL 1: Log receipt immediately ─────────────────────────────</span></div>
+<div id="L842" class="row"><span class="ln"> 842</span><span class="code">        WRITE_AUDIT('RECEIVED',</span></div>
+<div id="L843" class="row"><span class="ln"> 843</span><span class="code">            'Callback received from ESB. service=' || NVL(p_service_name,'(null)') ||</span></div>
+<div id="L844" class="row"><span class="ln"> 844</span><span class="code">            ' x-unique-id=' || NVL(p_x_unique_id,'(null)') ||</span></div>
+<div id="L845" class="row"><span class="ln"> 845</span><span class="code">            ' channel=' || NVL(p_channel_id,'(null)') ||</span></div>
+<div id="L846" class="row"><span class="ln"> 846</span><span class="code">            ' payload_len=' || NVL(TO_CHAR(DBMS_LOB.GETLENGTH(p_callback_payload)),'0'));</span></div>
+<div id="L847" class="row"><span class="ln"> 847</span><span class="code"></span></div>
+<div id="L848" class="row cmt"><span class="ln"> 848</span><span class="code">        -- ── LEVEL 2: Validate service name ───────────────────────────────</span></div>
+<div id="L849" class="row"><span class="ln"> 849</span><span class="code">        BEGIN</span></div>
+<div id="L850" class="row"><span class="ln"> 850</span><span class="code">            SELECT * INTO v_reg</span></div>
+<div id="L851" class="row"><span class="ln"> 851</span><span class="code">            FROM CRM_MPM_API_REGISTRY</span></div>
+<div id="L852" class="row"><span class="ln"> 852</span><span class="code">            WHERE SERVICE_NAME = p_service_name AND IS_ACTIVE = 'Y';</span></div>
+<div id="L853" class="row"><span class="ln"> 853</span><span class="code">        EXCEPTION</span></div>
+<div id="L854" class="row"><span class="ln"> 854</span><span class="code">            WHEN NO_DATA_FOUND THEN</span></div>
+<div id="L855" class="row"><span class="ln"> 855</span><span class="code">                WRITE_AUDIT('FAILED',</span></div>
+<div id="L856" class="row"><span class="ln"> 856</span><span class="code">                    'Unknown SERVICE_NAME [' || p_service_name || '] — not found in CRM_MPM_API_REGISTRY');</span></div>
+<div id="L857" class="row"><span class="ln"> 857</span><span class="code">                p_status_code := GET_CB_CODE('CB_1001');</span></div>
+<div id="L858" class="row"><span class="ln"> 858</span><span class="code">                p_description := 'Unknown SERVICE_NAME [' || p_service_name || ']';</span></div>
+<div id="L859" class="row"><span class="ln"> 859</span><span class="code">                p_result_out :=</span></div>
+<div id="L860" class="row"><span class="ln"> 860</span><span class="code">                    '{"status":"ERROR"' ||</span></div>
+<div id="L861" class="row"><span class="ln"> 861</span><span class="code">                    ',"service_type":"' || NVL(p_service_name,'') || '"' ||</span></div>
+<div id="L862" class="row"><span class="ln"> 862</span><span class="code">                    ',"message":"Unknown SERVICE_NAME [' || p_service_name || ']"' ||</span></div>
+<div id="L863" class="row"><span class="ln"> 863</span><span class="code">                    '}';</span></div>
+<div id="L864" class="row"><span class="ln"> 864</span><span class="code">                WRITE_AUDIT('FAILED', p_description, NULL,</span></div>
+<div id="L865" class="row"><span class="ln"> 865</span><span class="code">                            p_result_out, p_status_code, p_description);</span></div>
+<div id="L866" class="row"><span class="ln"> 866</span><span class="code">                RETURN;</span></div>
+<div id="L867" class="row"><span class="ln"> 867</span><span class="code">        END;</span></div>
+<div id="L868" class="row"><span class="ln"> 868</span><span class="code"></span></div>
+<div id="L869" class="row"><span class="ln"> 869</span><span class="code">        WRITE_AUDIT('VALIDATING',</span></div>
+<div id="L870" class="row"><span class="ln"> 870</span><span class="code">            'Registry found. REGISTRY_ID=' || v_reg.REGISTRY_ID ||</span></div>
+<div id="L871" class="row"><span class="ln"> 871</span><span class="code">            ' Parsing callback JSON...');</span></div>
+<div id="L872" class="row"><span class="ln"> 872</span><span class="code"></span></div>
+<div id="L873" class="row cmt"><span class="ln"> 873</span><span class="code">        -- Parse callback fields — confirmed JSON contract (6 cases spec):</span></div>
+<div id="L874" class="row cmt"><span class="ln"> 874</span><span class="code">        -- { "request_id":"...", "status":"0000"/"9999",</span></div>
+<div id="L875" class="row cmt"><span class="ln"> 875</span><span class="code">        --   "description":"...", "record_type":"...", "record_action":"...",</span></div>
+<div id="L876" class="row cmt"><span class="ln"> 876</span><span class="code">        --   "message":"...", "callback_timestamp":"...",</span></div>
+<div id="L877" class="row cmt"><span class="ln"> 877</span><span class="code">        --   "crm_entity_id":"D365-GUID or null",</span></div>
+<div id="L878" class="row cmt"><span class="ln"> 878</span><span class="code">        --   "processing_result": { "result_code":"SUCCESS/VALIDATION_FAILED/</span></div>
+<div id="L879" class="row cmt"><span class="ln"> 879</span><span class="code">        --     RECORD_NOT_FOUND/DUPLICATE_RECORD", "result_description":"...",</span></div>
+<div id="L880" class="row cmt"><span class="ln"> 880</span><span class="code">        --     "validation_errors":[{"field":"","error_code":"","error_message":""}] } }</span></div>
+<div id="L881" class="row cmt"><span class="ln"> 881</span><span class="code">        -- Spec confirmed: field name is "request_id" (with underscore).</span></div>
+<div id="L882" class="row cmt"><span class="ln"> 882</span><span class="code">        -- "requestid" (no underscore) was only used during manual Postman testing.</span></div>
+<div id="L883" class="row cmt"><span class="ln"> 883</span><span class="code">        -- Try spec field name first, fall back to real APIC field name</span></div>
+<div id="L884" class="row"><span class="ln"> 884</span><span class="code">        v_crm_reference    := JSON_VALUE(p_callback_payload, '$.request_id');</span></div>
+<div id="L885" class="row"><span class="ln"> 885</span><span class="code">        IF v_crm_reference IS NULL THEN</span></div>
+<div id="L886" class="row"><span class="ln"> 886</span><span class="code">            v_crm_reference := JSON_VALUE(p_callback_payload, '$.requestid');</span></div>
+<div id="L887" class="row"><span class="ln"> 887</span><span class="code">        END IF;</span></div>
+<div id="L888" class="row"><span class="ln"> 888</span><span class="code">        v_callback_message := JSON_VALUE(p_callback_payload, '$.message');</span></div>
+<div id="L889" class="row"><span class="ln"> 889</span><span class="code"></span></div>
+<div id="L890" class="row"><span class="ln"> 890</span><span class="code">        WRITE_AUDIT('MATCHING',</span></div>
+<div id="L891" class="row"><span class="ln"> 891</span><span class="code">            'Parsed request_id=' || NVL(v_crm_reference,'(null)') ||</span></div>
+<div id="L892" class="row"><span class="ln"> 892</span><span class="code">            ' Searching CRM_MPM_CRM_INTEGRATION_LOG by ACK_REQUEST_ID...');</span></div>
+<div id="L893" class="row"><span class="ln"> 893</span><span class="code"></span></div>
+<div id="L894" class="row cmt"><span class="ln"> 894</span><span class="code">        -- Primary lookup: by ACK_REQUEST_ID = request_id from callback JSON</span></div>
+<div id="L895" class="row"><span class="ln"> 895</span><span class="code">        BEGIN</span></div>
+<div id="L896" class="row"><span class="ln"> 896</span><span class="code">            SELECT LOG_ID, FINAL_STATUS INTO v_log_id, v_current_status</span></div>
+<div id="L897" class="row"><span class="ln"> 897</span><span class="code">            FROM CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L898" class="row"><span class="ln"> 898</span><span class="code">            WHERE REGISTRY_ID    = v_reg.REGISTRY_ID</span></div>
+<div id="L899" class="row"><span class="ln"> 899</span><span class="code">              AND ACK_REQUEST_ID = v_crm_reference</span></div>
+<div id="L900" class="row"><span class="ln"> 900</span><span class="code">            ORDER BY LOG_ID DESC</span></div>
+<div id="L901" class="row"><span class="ln"> 901</span><span class="code">            FETCH FIRST 1 ROW ONLY;</span></div>
+<div id="L902" class="row"><span class="ln"> 902</span><span class="code"></span></div>
+<div id="L903" class="row"><span class="ln"> 903</span><span class="code">            WRITE_AUDIT('MATCHED',</span></div>
+<div id="L904" class="row"><span class="ln"> 904</span><span class="code">                'Log row found by ACK_REQUEST_ID. LOG_ID=' || v_log_id ||</span></div>
+<div id="L905" class="row"><span class="ln"> 905</span><span class="code">                ' current FINAL_STATUS=' || v_current_status, v_log_id);</span></div>
+<div id="L906" class="row"><span class="ln"> 906</span><span class="code">        EXCEPTION</span></div>
+<div id="L907" class="row"><span class="ln"> 907</span><span class="code">            WHEN NO_DATA_FOUND THEN</span></div>
+<div id="L908" class="row cmt"><span class="ln"> 908</span><span class="code">                -- request_id not found in ACK_REQUEST_ID column.</span></div>
+<div id="L909" class="row cmt"><span class="ln"> 909</span><span class="code">                -- NO FALLBACK — we never guess which log row to update.</span></div>
+<div id="L910" class="row cmt"><span class="ln"> 910</span><span class="code">                -- If request_id is wrong or missing, reject the callback cleanly.</span></div>
+<div id="L911" class="row cmt"><span class="ln"> 911</span><span class="code">                -- ESB must send the exact request_id returned in LEG 1 ACK.</span></div>
+<div id="L912" class="row"><span class="ln"> 912</span><span class="code">                WRITE_AUDIT('NO_LOG_MATCH',</span></div>
+<div id="L913" class="row"><span class="ln"> 913</span><span class="code">                    'No log row found for ACK_REQUEST_ID=' ||</span></div>
+<div id="L914" class="row"><span class="ln"> 914</span><span class="code">                    NVL(v_crm_reference,'(null)') ||</span></div>
+<div id="L915" class="row"><span class="ln"> 915</span><span class="code">                    ' SERVICE_NAME=' || p_service_name ||</span></div>
+<div id="L916" class="row"><span class="ln"> 916</span><span class="code">                    ' — rejected. ESB must send exact request_id from LEG 1 ACK.');</span></div>
+<div id="L917" class="row"><span class="ln"> 917</span><span class="code">                p_status_code := GET_CB_CODE('CB_1002');</span></div>
+<div id="L918" class="row"><span class="ln"> 918</span><span class="code">                p_description := 'No matching log entry. request_id=' ||</span></div>
+<div id="L919" class="row"><span class="ln"> 919</span><span class="code">                    NVL(v_crm_reference,'(null)') ||</span></div>
+<div id="L920" class="row"><span class="ln"> 920</span><span class="code">                    ' not found for SERVICE_NAME=' || p_service_name;</span></div>
+<div id="L921" class="row"><span class="ln"> 921</span><span class="code">                p_result_out :=</span></div>
+<div id="L922" class="row"><span class="ln"> 922</span><span class="code">                    '{"status":"ERROR"' ||</span></div>
+<div id="L923" class="row"><span class="ln"> 923</span><span class="code">                    ',"service_type":"' || NVL(p_service_name,'') || '"' ||</span></div>
+<div id="L924" class="row"><span class="ln"> 924</span><span class="code">                    ',"message":"No matching log entry. request_id=' ||</span></div>
+<div id="L925" class="row"><span class="ln"> 925</span><span class="code">                    NVL(v_crm_reference,'(null)') ||</span></div>
+<div id="L926" class="row"><span class="ln"> 926</span><span class="code">                    ' not found in ACK_REQUEST_ID for SERVICE_NAME=' ||</span></div>
+<div id="L927" class="row"><span class="ln"> 927</span><span class="code">                    p_service_name || '. Use exact request_id from LEG 1 ACK response."' ||</span></div>
+<div id="L928" class="row"><span class="ln"> 928</span><span class="code">                    '}';</span></div>
+<div id="L929" class="row"><span class="ln"> 929</span><span class="code">                WRITE_AUDIT('NO_LOG_MATCH',</span></div>
+<div id="L930" class="row"><span class="ln"> 930</span><span class="code">                    'Rejected — response sent to ESB',</span></div>
+<div id="L931" class="row"><span class="ln"> 931</span><span class="code">                    NULL, p_result_out, p_status_code, p_description);</span></div>
+<div id="L932" class="row"><span class="ln"> 932</span><span class="code">                RETURN;</span></div>
+<div id="L933" class="row"><span class="ln"> 933</span><span class="code">        END;</span></div>
+<div id="L934" class="row"><span class="ln"> 934</span><span class="code"></span></div>
+<div id="L935" class="row cmt"><span class="ln"> 935</span><span class="code">        -- Parse callback JSON body to get result_code and crm_entity_id</span></div>
+<div id="L936" class="row"><span class="ln"> 936</span><span class="code">        DECLARE</span></div>
+<div id="L937" class="row"><span class="ln"> 937</span><span class="code">            v_result_code  VARCHAR2(50);</span></div>
+<div id="L938" class="row"><span class="ln"> 938</span><span class="code">            v_result_desc  VARCHAR2(500);</span></div>
+<div id="L939" class="row"><span class="ln"> 939</span><span class="code">            v_crm_ent_id   VARCHAR2(200);</span></div>
+<div id="L940" class="row"><span class="ln"> 940</span><span class="code">            v_valid_errors CLOB;</span></div>
+<div id="L941" class="row"><span class="ln"> 941</span><span class="code">            v_cb_status    VARCHAR2(10);</span></div>
+<div id="L942" class="row"><span class="ln"> 942</span><span class="code">        BEGIN</span></div>
+<div id="L943" class="row cmt"><span class="ln"> 943</span><span class="code">            -- Parse all LEG 2 callback fields per confirmed 6-case spec</span></div>
+<div id="L944" class="row"><span class="ln"> 944</span><span class="code">            v_cb_status   := JSON_VALUE(p_callback_payload, '$.status');</span></div>
+<div id="L945" class="row"><span class="ln"> 945</span><span class="code">            v_crm_ent_id  := JSON_VALUE(p_callback_payload, '$.crm_entity_id');</span></div>
+<div id="L946" class="row"><span class="ln"> 946</span><span class="code">            v_result_code := JSON_VALUE(p_callback_payload, '$.processing_result.result_code');</span></div>
+<div id="L947" class="row"><span class="ln"> 947</span><span class="code">            v_result_desc := JSON_VALUE(p_callback_payload, '$.processing_result.result_description');</span></div>
+<div id="L948" class="row"><span class="ln"> 948</span><span class="code"></span></div>
+<div id="L949" class="row cmt"><span class="ln"> 949</span><span class="code">            -- Extract validation_errors array as JSON string for storage</span></div>
+<div id="L950" class="row"><span class="ln"> 950</span><span class="code">            BEGIN</span></div>
+<div id="L951" class="row"><span class="ln"> 951</span><span class="code">                SELECT JSON_QUERY(p_callback_payload, '$.processing_result.validation_errors')</span></div>
+<div id="L952" class="row"><span class="ln"> 952</span><span class="code">                INTO v_valid_errors FROM DUAL;</span></div>
+<div id="L953" class="row"><span class="ln"> 953</span><span class="code">            EXCEPTION WHEN OTHERS THEN v_valid_errors := NULL;</span></div>
+<div id="L954" class="row"><span class="ln"> 954</span><span class="code">            END;</span></div>
+<div id="L955" class="row"><span class="ln"> 955</span><span class="code"></span></div>
+<div id="L956" class="row cmt"><span class="ln"> 956</span><span class="code">            -- Map processing_result.result_code → FINAL_STATUS</span></div>
+<div id="L957" class="row cmt"><span class="ln"> 957</span><span class="code">            -- This is the authoritative field — top-level status (0000/9999) in LEG 2</span></div>
+<div id="L958" class="row cmt"><span class="ln"> 958</span><span class="code">            -- only indicates whether D365 processing succeeded or failed broadly.</span></div>
+<div id="L959" class="row cmt"><span class="ln"> 959</span><span class="code">            -- The specific reason is always in result_code.</span></div>
+<div id="L960" class="row cmt"><span class="ln"> 960</span><span class="code">            -- CASE 1: result_code=SUCCESS                → FINAL_STATUS=SUCCESS</span></div>
+<div id="L961" class="row cmt"><span class="ln"> 961</span><span class="code">            -- CASE 2: result_code=VALIDATION_FAILED      → FINAL_STATUS=VALIDATION_FAILED</span></div>
+<div id="L962" class="row cmt"><span class="ln"> 962</span><span class="code">            -- CASE 3: result_code=RECORD_NOT_FOUND       → FINAL_STATUS=RECORD_NOT_FOUND</span></div>
+<div id="L963" class="row cmt"><span class="ln"> 963</span><span class="code">            -- CASE 4: result_code=DUPLICATE_RECORD       → FINAL_STATUS=DUPLICATE_RECORD</span></div>
+<div id="L964" class="row cmt"><span class="ln"> 964</span><span class="code">            -- CASE 5: result_code=INVALID_JSON           → FINAL_STATUS=VALIDATION_FAILED</span></div>
+<div id="L965" class="row cmt"><span class="ln"> 965</span><span class="code">            -- CASE 6: result_code=CONFIG_NOT_FOUND       → FINAL_STATUS=CRM_REJECTED</span></div>
+<div id="L966" class="row cmt"><span class="ln"> 966</span><span class="code">            -- CASE 7: result_code=MANDATORY_FIELD_MISSING→ FINAL_STATUS=VALIDATION_FAILED</span></div>
+<div id="L967" class="row cmt"><span class="ln"> 967</span><span class="code">            -- CASE 8: result_code=PRIMARY_FIELD_MISSING  → FINAL_STATUS=VALIDATION_FAILED</span></div>
+<div id="L968" class="row cmt"><span class="ln"> 968</span><span class="code">            -- CASE 9: result_code=LOOKUP_VALIDATION_FAILED→ FINAL_STATUS=RECORD_NOT_FOUND</span></div>
+<div id="L969" class="row cmt"><span class="ln"> 969</span><span class="code">            -- CASE 10:result_code=FAILURE                → FINAL_STATUS=FAILED</span></div>
+<div id="L970" class="row"><span class="ln"> 970</span><span class="code">            IF v_result_code = 'SUCCESS' OR v_cb_status = '0000' THEN</span></div>
+<div id="L971" class="row"><span class="ln"> 971</span><span class="code">                v_final_status := 'SUCCESS';</span></div>
+<div id="L972" class="row"><span class="ln"> 972</span><span class="code">                v_error_code   := 'SUCCESS';</span></div>
+<div id="L973" class="row"><span class="ln"> 973</span><span class="code">            ELSIF v_cb_status = '9999' AND v_result_code IS NULL THEN</span></div>
+<div id="L974" class="row cmt"><span class="ln"> 974</span><span class="code">                -- status=9999 with no result_code — CRM failed, record not created</span></div>
+<div id="L975" class="row cmt"><span class="ln"> 975</span><span class="code">                -- Confirmed by CRM team: 9999 = failure, must retry from Oracle</span></div>
+<div id="L976" class="row"><span class="ln"> 976</span><span class="code">                v_final_status := 'FAILED';</span></div>
+<div id="L977" class="row"><span class="ln"> 977</span><span class="code">                v_error_code   := 'FAILURE';</span></div>
+<div id="L978" class="row"><span class="ln"> 978</span><span class="code">            ELSIF v_result_code = 'VALIDATION_FAILED' THEN</span></div>
+<div id="L979" class="row"><span class="ln"> 979</span><span class="code">                v_final_status := 'VALIDATION_FAILED';</span></div>
+<div id="L980" class="row"><span class="ln"> 980</span><span class="code">                v_error_code   := 'VALIDATION_FAILED';</span></div>
+<div id="L981" class="row"><span class="ln"> 981</span><span class="code">            ELSIF v_result_code = 'RECORD_NOT_FOUND' THEN</span></div>
+<div id="L982" class="row"><span class="ln"> 982</span><span class="code">                v_final_status := 'RECORD_NOT_FOUND';</span></div>
+<div id="L983" class="row"><span class="ln"> 983</span><span class="code">                v_error_code   := 'RECORD_NOT_FOUND';</span></div>
+<div id="L984" class="row"><span class="ln"> 984</span><span class="code">            ELSIF v_result_code = 'DUPLICATE_RECORD' THEN</span></div>
+<div id="L985" class="row"><span class="ln"> 985</span><span class="code">                v_final_status := 'DUPLICATE_RECORD';</span></div>
+<div id="L986" class="row"><span class="ln"> 986</span><span class="code">                v_error_code   := 'DUPLICATE_RECORD';</span></div>
+<div id="L987" class="row cmt"><span class="ln"> 987</span><span class="code">            -- New CRM error codes confirmed by CRM team</span></div>
+<div id="L988" class="row"><span class="ln"> 988</span><span class="code">            ELSIF v_result_code = 'INVALID_JSON' THEN</span></div>
+<div id="L989" class="row cmt"><span class="ln"> 989</span><span class="code">                -- Bad JSON payload -- data fix needed, no retry</span></div>
+<div id="L990" class="row"><span class="ln"> 990</span><span class="code">                v_final_status := 'VALIDATION_FAILED';</span></div>
+<div id="L991" class="row"><span class="ln"> 991</span><span class="code">                v_error_code   := 'INVALID_JSON';</span></div>
+<div id="L992" class="row"><span class="ln"> 992</span><span class="code">            ELSIF v_result_code = 'CONFIG_NOT_FOUND' THEN</span></div>
+<div id="L993" class="row cmt"><span class="ln"> 993</span><span class="code">                -- PxRM integration master missing -- config fix needed</span></div>
+<div id="L994" class="row"><span class="ln"> 994</span><span class="code">                v_final_status := 'CRM_REJECTED';</span></div>
+<div id="L995" class="row"><span class="ln"> 995</span><span class="code">                v_error_code   := 'CONFIG_NOT_FOUND';</span></div>
+<div id="L996" class="row"><span class="ln"> 996</span><span class="code">            ELSIF v_result_code = 'MANDATORY_FIELD_MISSING' THEN</span></div>
+<div id="L997" class="row cmt"><span class="ln"> 997</span><span class="code">                -- Required field absent in payload -- data fix needed</span></div>
+<div id="L998" class="row"><span class="ln"> 998</span><span class="code">                v_final_status := 'VALIDATION_FAILED';</span></div>
+<div id="L999" class="row"><span class="ln"> 999</span><span class="code">                v_error_code   := 'MANDATORY_FIELD_MISSING';</span></div>
+<div id="L1000" class="row"><span class="ln">1000</span><span class="code">            ELSIF v_result_code = 'PRIMARY_FIELD_MISSING' THEN</span></div>
+<div id="L1001" class="row cmt"><span class="ln">1001</span><span class="code">                -- Oracle primary key missing in payload -- mapping fix needed</span></div>
+<div id="L1002" class="row"><span class="ln">1002</span><span class="code">                v_final_status := 'VALIDATION_FAILED';</span></div>
+<div id="L1003" class="row"><span class="ln">1003</span><span class="code">                v_error_code   := 'PRIMARY_FIELD_MISSING';</span></div>
+<div id="L1004" class="row"><span class="ln">1004</span><span class="code">            ELSIF v_result_code = 'LOOKUP_VALIDATION_FAILED' THEN</span></div>
+<div id="L1005" class="row cmt"><span class="ln">1005</span><span class="code">                -- Parent/related record not found in PxRM -- retryable after parent pushed</span></div>
+<div id="L1006" class="row"><span class="ln">1006</span><span class="code">                v_final_status := 'RECORD_NOT_FOUND';</span></div>
+<div id="L1007" class="row"><span class="ln">1007</span><span class="code">                v_error_code   := 'LOOKUP_VALIDATION_FAILED';</span></div>
+<div id="L1008" class="row"><span class="ln">1008</span><span class="code">            ELSIF v_result_code = 'FAILURE' THEN</span></div>
+<div id="L1009" class="row cmt"><span class="ln">1009</span><span class="code">                -- Generic PostOperation catch -- retryable</span></div>
+<div id="L1010" class="row"><span class="ln">1010</span><span class="code">                v_final_status := 'FAILED';</span></div>
+<div id="L1011" class="row"><span class="ln">1011</span><span class="code">                v_error_code   := 'FAILURE';</span></div>
+<div id="L1012" class="row"><span class="ln">1012</span><span class="code">            ELSE</span></div>
+<div id="L1013" class="row cmt"><span class="ln">1013</span><span class="code">                -- Unknown result_code — validate against master table</span></div>
+<div id="L1014" class="row"><span class="ln">1014</span><span class="code">                v_final_status := 'FAILED';</span></div>
+<div id="L1015" class="row"><span class="ln">1015</span><span class="code">                BEGIN</span></div>
+<div id="L1016" class="row"><span class="ln">1016</span><span class="code">                    SELECT ERROR_CODE INTO v_error_code</span></div>
+<div id="L1017" class="row"><span class="ln">1017</span><span class="code">                    FROM CRM_MPM_ERROR_CODE_MASTER</span></div>
+<div id="L1018" class="row"><span class="ln">1018</span><span class="code">                    WHERE ERROR_CODE = NVL(v_result_code, 'UNKNOWN_ERROR');</span></div>
+<div id="L1019" class="row"><span class="ln">1019</span><span class="code">                EXCEPTION</span></div>
+<div id="L1020" class="row"><span class="ln">1020</span><span class="code">                    WHEN NO_DATA_FOUND THEN v_error_code := 'UNKNOWN_ERROR';</span></div>
+<div id="L1021" class="row"><span class="ln">1021</span><span class="code">                END;</span></div>
+<div id="L1022" class="row"><span class="ln">1022</span><span class="code">            END IF;</span></div>
+<div id="L1023" class="row"><span class="ln">1023</span><span class="code"></span></div>
+<div id="L1024" class="row cmt"><span class="ln">1024</span><span class="code">            -- ----------------------------------------------------------------</span></div>
+<div id="L1025" class="row crit"><span class="ln">1025</span><span class="code">            -- 9999 OVERRIDE: CRM team confirmed status=9999 means record was</span></div>
+<div id="L1026" class="row cmt"><span class="ln">1026</span><span class="code">            -- NOT created in PxRM regardless of result_code.</span></div>
+<div id="L1027" class="row cmt"><span class="ln">1027</span><span class="code">            -- Therefore ALL 9999 responses must be retried from Oracle EXCEPT</span></div>
+<div id="L1028" class="row cmt"><span class="ln">1028</span><span class="code">            -- DUPLICATE_RECORD (record already exists — retry is pointless).</span></div>
+<div id="L1029" class="row cmt"><span class="ln">1029</span><span class="code">            -- This override runs AFTER result_code mapping so error_code</span></div>
+<div id="L1030" class="row cmt"><span class="ln">1030</span><span class="code">            -- still captures the specific reason for the failure.</span></div>
+<div id="L1031" class="row cmt"><span class="ln">1031</span><span class="code">            -- ----------------------------------------------------------------</span></div>
+<div id="L1032" class="row"><span class="ln">1032</span><span class="code">            IF v_cb_status = '9999'</span></div>
+<div id="L1033" class="row"><span class="ln">1033</span><span class="code">               AND NVL(v_result_code,'x') != 'DUPLICATE_RECORD'</span></div>
+<div id="L1034" class="row"><span class="ln">1034</span><span class="code">               AND NVL(v_final_status,'x') != 'SUCCESS' THEN</span></div>
+<div id="L1035" class="row"><span class="ln">1035</span><span class="code">                v_final_status := 'FAILED';</span></div>
+<div id="L1036" class="row cmt"><span class="ln">1036</span><span class="code">                -- Keep v_error_code as-is so specific reason is preserved</span></div>
+<div id="L1037" class="row cmt"><span class="ln">1037</span><span class="code">                -- e.g. MANDATORY_FIELD_MISSING stays as error code</span></div>
+<div id="L1038" class="row cmt"><span class="ln">1038</span><span class="code">                -- but FINAL_STATUS=FAILED means retry job picks it up</span></div>
+<div id="L1039" class="row"><span class="ln">1039</span><span class="code">            END IF;</span></div>
+<div id="L1040" class="row"><span class="ln">1040</span><span class="code"></span></div>
+<div id="L1041" class="row cmt"><span class="ln">1041</span><span class="code">            -- Store crm_entity_id and validation_errors via additional UPDATE</span></div>
+<div id="L1042" class="row"><span class="ln">1042</span><span class="code">            UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1043" class="row"><span class="ln">1043</span><span class="code">            SET CRM_ENTITY_ID          = v_crm_ent_id,</span></div>
+<div id="L1044" class="row"><span class="ln">1044</span><span class="code">                CALLBACK_RESULT_CODE   = v_result_code,</span></div>
+<div id="L1045" class="row"><span class="ln">1045</span><span class="code">                CALLBACK_RESULT_DESC   = v_result_desc,</span></div>
+<div id="L1046" class="row"><span class="ln">1046</span><span class="code">                CALLBACK_VALID_ERRORS  = v_valid_errors</span></div>
+<div id="L1047" class="row"><span class="ln">1047</span><span class="code">            WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1048" class="row"><span class="ln">1048</span><span class="code">        END;</span></div>
+<div id="L1049" class="row"><span class="ln">1049</span><span class="code"></span></div>
+<div id="L1050" class="row"><span class="ln">1050</span><span class="code">        UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1051" class="row"><span class="ln">1051</span><span class="code">        SET CRM_REFERENCE_NO        = NVL(CRM_REFERENCE_NO, v_crm_reference),</span></div>
+<div id="L1052" class="row"><span class="ln">1052</span><span class="code">            FINAL_STATUS            = v_final_status,</span></div>
+<div id="L1053" class="row"><span class="ln">1053</span><span class="code">            ERROR_CODE              = v_error_code,</span></div>
+<div id="L1054" class="row"><span class="ln">1054</span><span class="code">            ERROR_MESSAGE           = v_callback_message,</span></div>
+<div id="L1055" class="row"><span class="ln">1055</span><span class="code">            CALLBACK_PAYLOAD        = p_callback_payload,</span></div>
+<div id="L1056" class="row"><span class="ln">1056</span><span class="code">            CALLBACK_DATE           = SYSTIMESTAMP,</span></div>
+<div id="L1057" class="row"><span class="ln">1057</span><span class="code">            CALLBACK_X_UNIQUE_ID    = p_x_unique_id,</span></div>
+<div id="L1058" class="row"><span class="ln">1058</span><span class="code">            CALLBACK_CHANNEL_ID     = p_channel_id,</span></div>
+<div id="L1059" class="row"><span class="ln">1059</span><span class="code">            IS_FINAL_ATTEMPT        = CASE WHEN v_final_status IN ('SUCCESS','ALREADY_PROCESSED')</span></div>
+<div id="L1060" class="row"><span class="ln">1060</span><span class="code">                                          THEN 'Y' ELSE IS_FINAL_ATTEMPT END,</span></div>
+<div id="L1061" class="row"><span class="ln">1061</span><span class="code">            UPDATED_DATE            = SYSTIMESTAMP</span></div>
+<div id="L1062" class="row"><span class="ln">1062</span><span class="code">        WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1063" class="row"><span class="ln">1063</span><span class="code"></span></div>
+<div id="L1064" class="row"><span class="ln">1064</span><span class="code">        DECLARE</span></div>
+<div id="L1065" class="row"><span class="ln">1065</span><span class="code">            v_source_rec_id VARCHAR2(4000);</span></div>
+<div id="L1066" class="row"><span class="ln">1066</span><span class="code">        BEGIN</span></div>
+<div id="L1067" class="row"><span class="ln">1067</span><span class="code">            SELECT SOURCE_RECORD_ID INTO v_source_rec_id</span></div>
+<div id="L1068" class="row"><span class="ln">1068</span><span class="code">            FROM CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1069" class="row"><span class="ln">1069</span><span class="code">            WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1070" class="row"><span class="ln">1070</span><span class="code"></span></div>
+<div id="L1071" class="row"><span class="ln">1071</span><span class="code">            IF v_reg.POST_CALLBACK_PROC IS NOT NULL THEN</span></div>
+<div id="L1072" class="row cmt"><span class="ln">1072</span><span class="code">                -- Custom post-callback procedure defined — call it</span></div>
+<div id="L1073" class="row"><span class="ln">1073</span><span class="code">                v_sql := 'BEGIN ' || v_reg.POST_CALLBACK_PROC ||</span></div>
+<div id="L1074" class="row"><span class="ln">1074</span><span class="code">                         '(:p_key, :p_status, :p_ref, :p_errcode, :p_errmsg); END;';</span></div>
+<div id="L1075" class="row"><span class="ln">1075</span><span class="code">                EXECUTE IMMEDIATE v_sql</span></div>
+<div id="L1076" class="row"><span class="ln">1076</span><span class="code">                    USING v_source_rec_id, v_final_status, v_crm_reference,</span></div>
+<div id="L1077" class="row"><span class="ln">1077</span><span class="code">                          v_error_code, v_callback_message;</span></div>
+<div id="L1078" class="row"><span class="ln">1078</span><span class="code"></span></div>
+<div id="L1079" class="row"><span class="ln">1079</span><span class="code">            ELSIF v_reg.CALLBACK_TARGET_TABLE IS NOT NULL</span></div>
+<div id="L1080" class="row"><span class="ln">1080</span><span class="code">              AND v_reg.CALLBACK_STATUS_COL   IS NOT NULL</span></div>
+<div id="L1081" class="row"><span class="ln">1081</span><span class="code">              AND v_reg.CALLBACK_REF_COL      IS NOT NULL</span></div>
+<div id="L1082" class="row"><span class="ln">1082</span><span class="code">              AND v_reg.CALLBACK_KEY_COL      IS NOT NULL</span></div>
+<div id="L1083" class="row"><span class="ln">1083</span><span class="code">            THEN</span></div>
+<div id="L1084" class="row cmt"><span class="ln">1084</span><span class="code">                -- Update entity table with CRM sync status — only if table is configured</span></div>
+<div id="L1085" class="row cmt"><span class="ln">1085</span><span class="code">                -- and actually exists. Skip gracefully if table does not exist yet.</span></div>
+<div id="L1086" class="row"><span class="ln">1086</span><span class="code">                BEGIN</span></div>
+<div id="L1087" class="row"><span class="ln">1087</span><span class="code">                    v_sql := 'UPDATE ' || v_reg.CALLBACK_TARGET_TABLE ||</span></div>
+<div id="L1088" class="row"><span class="ln">1088</span><span class="code">                             ' SET ' || v_reg.CALLBACK_STATUS_COL || ' = :p_status, ' ||</span></div>
+<div id="L1089" class="row"><span class="ln">1089</span><span class="code">                                        v_reg.CALLBACK_REF_COL    || ' = :p_ref '     ||</span></div>
+<div id="L1090" class="row"><span class="ln">1090</span><span class="code">                             ' WHERE ' || v_reg.CALLBACK_KEY_COL  || ' = :p_key';</span></div>
+<div id="L1091" class="row"><span class="ln">1091</span><span class="code">                    EXECUTE IMMEDIATE v_sql</span></div>
+<div id="L1092" class="row"><span class="ln">1092</span><span class="code">                        USING v_final_status, v_crm_reference, v_source_rec_id;</span></div>
+<div id="L1093" class="row"><span class="ln">1093</span><span class="code">                EXCEPTION</span></div>
+<div id="L1094" class="row"><span class="ln">1094</span><span class="code">                    WHEN OTHERS THEN</span></div>
+<div id="L1095" class="row cmt"><span class="ln">1095</span><span class="code">                        -- Table does not exist or column missing — log and continue.</span></div>
+<div id="L1096" class="row cmt"><span class="ln">1096</span><span class="code">                        -- The integration log (CRM_MPM_CRM_INTEGRATION_LOG) is already</span></div>
+<div id="L1097" class="row cmt"><span class="ln">1097</span><span class="code">                        -- updated above. The entity table update is optional.</span></div>
+<div id="L1098" class="row"><span class="ln">1098</span><span class="code">                        NULL;</span></div>
+<div id="L1099" class="row"><span class="ln">1099</span><span class="code">                END;</span></div>
+<div id="L1100" class="row"><span class="ln">1100</span><span class="code">            END IF;</span></div>
+<div id="L1101" class="row cmt"><span class="ln">1101</span><span class="code">            -- If no callback table configured at all — skip silently.</span></div>
+<div id="L1102" class="row cmt"><span class="ln">1102</span><span class="code">            -- CRM_MPM_CRM_INTEGRATION_LOG already has the full result.</span></div>
+<div id="L1103" class="row"><span class="ln">1103</span><span class="code">        END;</span></div>
+<div id="L1104" class="row"><span class="ln">1104</span><span class="code"></span></div>
+<div id="L1105" class="row"><span class="ln">1105</span><span class="code">        COMMIT;</span></div>
+<div id="L1106" class="row"><span class="ln">1106</span><span class="code"></span></div>
+<div id="L1107" class="row cmt"><span class="ln">1107</span><span class="code">        -- Return full JSON response to ESB</span></div>
+<div id="L1108" class="row"><span class="ln">1108</span><span class="code">        DECLARE</span></div>
+<div id="L1109" class="row"><span class="ln">1109</span><span class="code">            v_crm_ent_id_out VARCHAR2(200);</span></div>
+<div id="L1110" class="row"><span class="ln">1110</span><span class="code">        BEGIN</span></div>
+<div id="L1111" class="row"><span class="ln">1111</span><span class="code">            SELECT NVL(CRM_ENTITY_ID,'')</span></div>
+<div id="L1112" class="row"><span class="ln">1112</span><span class="code">            INTO v_crm_ent_id_out</span></div>
+<div id="L1113" class="row"><span class="ln">1113</span><span class="code">            FROM CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1114" class="row"><span class="ln">1114</span><span class="code">            WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1115" class="row"><span class="ln">1115</span><span class="code"></span></div>
+<div id="L1116" class="row"><span class="ln">1116</span><span class="code">            p_result_out :=</span></div>
+<div id="L1117" class="row"><span class="ln">1117</span><span class="code">                '{"status":"OK"' ||</span></div>
+<div id="L1118" class="row"><span class="ln">1118</span><span class="code">                ',"service_type":"'          || p_service_name       || '"' ||</span></div>
+<div id="L1119" class="row"><span class="ln">1119</span><span class="code">                ',"log_id":'                 || v_log_id                    ||</span></div>
+<div id="L1120" class="row"><span class="ln">1120</span><span class="code">                ',"final_status":"'          || v_final_status        || '"' ||</span></div>
+<div id="L1121" class="row"><span class="ln">1121</span><span class="code">                ',"request_id":"'            || NVL(v_crm_reference,'') || '"' ||</span></div>
+<div id="L1122" class="row"><span class="ln">1122</span><span class="code">                ',"crm_entity_id":"'         || v_crm_ent_id_out     || '"' ||</span></div>
+<div id="L1123" class="row"><span class="ln">1123</span><span class="code">                ',"callback_result_code":"'  || NVL(v_final_status,'') || '"' ||</span></div>
+<div id="L1124" class="row"><span class="ln">1124</span><span class="code">                '}';</span></div>
+<div id="L1125" class="row"><span class="ln">1125</span><span class="code">        EXCEPTION</span></div>
+<div id="L1126" class="row"><span class="ln">1126</span><span class="code">            WHEN NO_DATA_FOUND THEN</span></div>
+<div id="L1127" class="row"><span class="ln">1127</span><span class="code">                p_result_out :=</span></div>
+<div id="L1128" class="row"><span class="ln">1128</span><span class="code">                    '{"status":"OK"' ||</span></div>
+<div id="L1129" class="row"><span class="ln">1129</span><span class="code">                    ',"service_type":"'         || p_service_name       || '"' ||</span></div>
+<div id="L1130" class="row"><span class="ln">1130</span><span class="code">                    ',"log_id":'                || v_log_id                    ||</span></div>
+<div id="L1131" class="row"><span class="ln">1131</span><span class="code">                    ',"final_status":"'         || v_final_status        || '"' ||</span></div>
+<div id="L1132" class="row"><span class="ln">1132</span><span class="code">                    ',"request_id":"'           || NVL(v_crm_reference,'') || '"' ||</span></div>
+<div id="L1133" class="row"><span class="ln">1133</span><span class="code">                    ',"crm_entity_id":""'                                       ||</span></div>
+<div id="L1134" class="row"><span class="ln">1134</span><span class="code">                    ',"callback_result_code":"' || NVL(v_final_status,'') || '"' ||</span></div>
+<div id="L1135" class="row"><span class="ln">1135</span><span class="code">                    '}';</span></div>
+<div id="L1136" class="row"><span class="ln">1136</span><span class="code">        END;</span></div>
+<div id="L1137" class="row"><span class="ln">1137</span><span class="code"></span></div>
+<div id="L1138" class="row cmt"><span class="ln">1138</span><span class="code">        -- Set simple OUT params for ESB alongside full JSON</span></div>
+<div id="L1139" class="row"><span class="ln">1139</span><span class="code">        p_status_code := GET_CB_CODE('CB_0000');</span></div>
+<div id="L1140" class="row"><span class="ln">1140</span><span class="code">        p_description := 'Callback processed successfully. FINAL_STATUS=' ||</span></div>
+<div id="L1141" class="row"><span class="ln">1141</span><span class="code">                         v_final_status || ' LOG_ID=' || TO_CHAR(v_log_id) ||</span></div>
+<div id="L1142" class="row"><span class="ln">1142</span><span class="code">                         ' SERVICE=' || p_service_name;</span></div>
+<div id="L1143" class="row"><span class="ln">1143</span><span class="code"></span></div>
+<div id="L1144" class="row cmt"><span class="ln">1144</span><span class="code">        -- Write final audit AFTER p_result_out is built — stores exact response sent to ESB</span></div>
+<div id="L1145" class="row"><span class="ln">1145</span><span class="code">        WRITE_AUDIT('PROCESSED',</span></div>
+<div id="L1146" class="row"><span class="ln">1146</span><span class="code">            'Callback fully processed. FINAL_STATUS=' || v_final_status ||</span></div>
+<div id="L1147" class="row"><span class="ln">1147</span><span class="code">            ' LOG_ID=' || v_log_id, v_log_id, p_result_out,</span></div>
+<div id="L1148" class="row"><span class="ln">1148</span><span class="code">            p_status_code, p_description);</span></div>
+<div id="L1149" class="row"><span class="ln">1149</span><span class="code"></span></div>
+<div id="L1150" class="row"><span class="ln">1150</span><span class="code">    EXCEPTION</span></div>
+<div id="L1151" class="row"><span class="ln">1151</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L1152" class="row"><span class="ln">1152</span><span class="code">            ROLLBACK;</span></div>
+<div id="L1153" class="row"><span class="ln">1153</span><span class="code">            p_status_code := GET_CB_CODE('CB_1003');</span></div>
+<div id="L1154" class="row"><span class="ln">1154</span><span class="code">            p_description := 'Unhandled exception: ' || SUBSTR(SQLERRM,1,200);</span></div>
+<div id="L1155" class="row"><span class="ln">1155</span><span class="code">            p_result_out :=</span></div>
+<div id="L1156" class="row"><span class="ln">1156</span><span class="code">                '{"status":"ERROR"' ||</span></div>
+<div id="L1157" class="row"><span class="ln">1157</span><span class="code">                ',"service_type":"' || NVL(p_service_name,'') || '"' ||</span></div>
+<div id="L1158" class="row"><span class="ln">1158</span><span class="code">                ',"message":"'      || REPLACE(SQLERRM,'"','''') || '"' ||</span></div>
+<div id="L1159" class="row"><span class="ln">1159</span><span class="code">                '}';</span></div>
+<div id="L1160" class="row"><span class="ln">1160</span><span class="code">            WRITE_AUDIT('FAILED',</span></div>
+<div id="L1161" class="row"><span class="ln">1161</span><span class="code">                'Unhandled exception: ' || REPLACE(SQLERRM,'"',''''),</span></div>
+<div id="L1162" class="row"><span class="ln">1162</span><span class="code">                NULL, p_result_out, p_status_code, p_description);</span></div>
+<div id="L1163" class="row proc"><span class="ln">1163</span><span class="code">    END PROCESS_CRM_CALLBACK;</span></div>
+<div id="L1164" class="row"><span class="ln">1164</span><span class="code"></span></div>
+<div id="L1165" class="row"><span class="ln">1165</span><span class="code"></span></div>
+<div id="L1166" class="row"><span class="ln">1166</span><span class="code">    /* ====================================================================</span></div>
+<div id="L1167" class="row"><span class="ln">1167</span><span class="code">       RUN_TIMEOUT_JOB</span></div>
+<div id="L1168" class="row"><span class="ln">1168</span><span class="code">       ==================================================================== */</span></div>
+<div id="L1169" class="row proc"><span class="ln">1169</span><span class="code">    PROCEDURE RUN_TIMEOUT_JOB IS</span></div>
+<div id="L1170" class="row fix"><span class="ln">1170</span><span class="code">        -- FIX: Declare an explicit named cursor — implicit FOR loop cursors over</span></div>
+<div id="L1171" class="row cmt"><span class="ln">1171</span><span class="code">        --      views can raise PLS-00364 and ORA-00904 when their columns are</span></div>
+<div id="L1172" class="row cmt"><span class="ln">1172</span><span class="code">        --      referenced in DML or assignments inside the loop body.</span></div>
+<div id="L1173" class="row cmt"><span class="ln">1173</span><span class="code">        -- Query joins LOG directly to REGISTRY to get MAX_RETRY_COUNT.</span></div>
+<div id="L1174" class="row"><span class="ln">1174</span><span class="code">        CURSOR c_timeout IS</span></div>
+<div id="L1175" class="row"><span class="ln">1175</span><span class="code">            SELECT t.LOG_ID,</span></div>
+<div id="L1176" class="row"><span class="ln">1176</span><span class="code">                   t.REGISTRY_ID,</span></div>
+<div id="L1177" class="row"><span class="ln">1177</span><span class="code">                   t.RETRY_COUNT,</span></div>
+<div id="L1178" class="row"><span class="ln">1178</span><span class="code">                   r.MAX_RETRY_COUNT,</span></div>
+<div id="L1179" class="row"><span class="ln">1179</span><span class="code">                   r.RETRY_INTERVAL_MINUTES</span></div>
+<div id="L1180" class="row"><span class="ln">1180</span><span class="code">            FROM CRM_MPM_CRM_INTEGRATION_LOG t</span></div>
+<div id="L1181" class="row"><span class="ln">1181</span><span class="code">            JOIN CRM_MPM_API_REGISTRY        r ON r.REGISTRY_ID = t.REGISTRY_ID</span></div>
+<div id="L1182" class="row"><span class="ln">1182</span><span class="code">            WHERE t.FINAL_STATUS IN ('SENT','PENDING')</span></div>
+<div id="L1183" class="row"><span class="ln">1183</span><span class="code">              AND t.SENT_DATE    &lt; SYSTIMESTAMP - (r.TIMEOUT_MINUTES / 1440)</span></div>
+<div id="L1184" class="row"><span class="ln">1184</span><span class="code">              AND r.IS_ACTIVE    = 'Y';</span></div>
+<div id="L1185" class="row"><span class="ln">1185</span><span class="code"></span></div>
+<div id="L1186" class="row"><span class="ln">1186</span><span class="code">        v_run_id      NUMBER;</span></div>
+<div id="L1187" class="row"><span class="ln">1187</span><span class="code">        v_count       NUMBER  := 0;</span></div>
+<div id="L1188" class="row cmt"><span class="ln">1188</span><span class="code">        -- Scalar locals populated from each fetched row</span></div>
+<div id="L1189" class="row"><span class="ln">1189</span><span class="code">        v_log_id      NUMBER;</span></div>
+<div id="L1190" class="row"><span class="ln">1190</span><span class="code">        v_retry_count    NUMBER;</span></div>
+<div id="L1191" class="row"><span class="ln">1191</span><span class="code">        v_max_retry      NUMBER;</span></div>
+<div id="L1192" class="row"><span class="ln">1192</span><span class="code">        v_reg_id         NUMBER;</span></div>
+<div id="L1193" class="row"><span class="ln">1193</span><span class="code">        v_retry_interval NUMBER;</span></div>
+<div id="L1194" class="row"><span class="ln">1194</span><span class="code">        v_err_msg     VARCHAR2(4000);</span></div>
+<div id="L1195" class="row"><span class="ln">1195</span><span class="code">    BEGIN</span></div>
+<div id="L1196" class="row"><span class="ln">1196</span><span class="code">        INSERT INTO CRM_MPM_JOB_RUN_HISTORY (JOB_NAME, STATUS)</span></div>
+<div id="L1197" class="row"><span class="ln">1197</span><span class="code">        VALUES ('TIMEOUT_JOB', 'RUNNING')</span></div>
+<div id="L1198" class="row"><span class="ln">1198</span><span class="code">        RETURNING RUN_ID INTO v_run_id;</span></div>
+<div id="L1199" class="row"><span class="ln">1199</span><span class="code">        COMMIT;</span></div>
+<div id="L1200" class="row"><span class="ln">1200</span><span class="code"></span></div>
+<div id="L1201" class="row fix"><span class="ln">1201</span><span class="code">        -- FIX: OPEN/FETCH/CLOSE pattern — no PLS-00364 risk</span></div>
+<div id="L1202" class="row"><span class="ln">1202</span><span class="code">        OPEN c_timeout;</span></div>
+<div id="L1203" class="row"><span class="ln">1203</span><span class="code">        LOOP</span></div>
+<div id="L1204" class="row"><span class="ln">1204</span><span class="code">            FETCH c_timeout</span></div>
+<div id="L1205" class="row"><span class="ln">1205</span><span class="code">            INTO v_log_id, v_reg_id, v_retry_count, v_max_retry, v_retry_interval;</span></div>
+<div id="L1206" class="row"><span class="ln">1206</span><span class="code">            EXIT WHEN c_timeout%NOTFOUND;</span></div>
+<div id="L1207" class="row"><span class="ln">1207</span><span class="code"></span></div>
+<div id="L1208" class="row"><span class="ln">1208</span><span class="code">            UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1209" class="row"><span class="ln">1209</span><span class="code">            SET FINAL_STATUS     = 'TIMEOUT',</span></div>
+<div id="L1210" class="row"><span class="ln">1210</span><span class="code">                ERROR_CODE       = 'TIMEOUT',</span></div>
+<div id="L1211" class="row"><span class="ln">1211</span><span class="code">                ERROR_MESSAGE    = 'No callback received within configured timeout window',</span></div>
+<div id="L1212" class="row"><span class="ln">1212</span><span class="code">                IS_FINAL_ATTEMPT = CASE WHEN v_retry_count &gt;= v_max_retry THEN 'Y' ELSE 'N' END,</span></div>
+<div id="L1213" class="row"><span class="ln">1213</span><span class="code">                UPDATED_DATE     = SYSTIMESTAMP</span></div>
+<div id="L1214" class="row"><span class="ln">1214</span><span class="code">            WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1215" class="row"><span class="ln">1215</span><span class="code"></span></div>
+<div id="L1216" class="row"><span class="ln">1216</span><span class="code">            IF v_retry_count &gt;= v_max_retry THEN</span></div>
+<div id="L1217" class="row"><span class="ln">1217</span><span class="code">                UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1218" class="row crit"><span class="ln">1218</span><span class="code">                SET FINAL_STATUS = 'EXHAUSTED',</span></div>
+<div id="L1219" class="row crit"><span class="ln">1219</span><span class="code">                    ERROR_CODE   = 'EXHAUSTED'</span></div>
+<div id="L1220" class="row"><span class="ln">1220</span><span class="code">                WHERE LOG_ID = v_log_id;</span></div>
+<div id="L1221" class="row"><span class="ln">1221</span><span class="code">            END IF;</span></div>
+<div id="L1222" class="row"><span class="ln">1222</span><span class="code"></span></div>
+<div id="L1223" class="row"><span class="ln">1223</span><span class="code">            v_count := v_count + 1;</span></div>
+<div id="L1224" class="row"><span class="ln">1224</span><span class="code">        END LOOP;</span></div>
+<div id="L1225" class="row"><span class="ln">1225</span><span class="code">        CLOSE c_timeout;</span></div>
+<div id="L1226" class="row"><span class="ln">1226</span><span class="code"></span></div>
+<div id="L1227" class="row"><span class="ln">1227</span><span class="code">        UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L1228" class="row"><span class="ln">1228</span><span class="code">        SET END_TIME          = SYSTIMESTAMP,</span></div>
+<div id="L1229" class="row"><span class="ln">1229</span><span class="code">            RECORDS_PROCESSED = v_count,</span></div>
+<div id="L1230" class="row"><span class="ln">1230</span><span class="code">            STATUS            = 'COMPLETED'</span></div>
+<div id="L1231" class="row"><span class="ln">1231</span><span class="code">        WHERE RUN_ID = v_run_id;</span></div>
+<div id="L1232" class="row"><span class="ln">1232</span><span class="code"></span></div>
+<div id="L1233" class="row"><span class="ln">1233</span><span class="code">        COMMIT;</span></div>
+<div id="L1234" class="row"><span class="ln">1234</span><span class="code"></span></div>
+<div id="L1235" class="row"><span class="ln">1235</span><span class="code">    EXCEPTION</span></div>
+<div id="L1236" class="row"><span class="ln">1236</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L1237" class="row"><span class="ln">1237</span><span class="code">            v_err_msg := SQLERRM;</span></div>
+<div id="L1238" class="row"><span class="ln">1238</span><span class="code">            IF c_timeout%ISOPEN THEN CLOSE c_timeout; END IF;</span></div>
+<div id="L1239" class="row"><span class="ln">1239</span><span class="code">            UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L1240" class="row"><span class="ln">1240</span><span class="code">            SET END_TIME      = SYSTIMESTAMP,</span></div>
+<div id="L1241" class="row"><span class="ln">1241</span><span class="code">                STATUS        = 'ERROR',</span></div>
+<div id="L1242" class="row"><span class="ln">1242</span><span class="code">                ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000)</span></div>
+<div id="L1243" class="row"><span class="ln">1243</span><span class="code">            WHERE RUN_ID = v_run_id;</span></div>
+<div id="L1244" class="row"><span class="ln">1244</span><span class="code">            COMMIT;</span></div>
+<div id="L1245" class="row"><span class="ln">1245</span><span class="code">            RAISE;</span></div>
+<div id="L1246" class="row proc"><span class="ln">1246</span><span class="code">    END RUN_TIMEOUT_JOB;</span></div>
+<div id="L1247" class="row"><span class="ln">1247</span><span class="code"></span></div>
+<div id="L1248" class="row"><span class="ln">1248</span><span class="code"></span></div>
+<div id="L1249" class="row"><span class="ln">1249</span><span class="code">    /* ====================================================================</span></div>
+<div id="L1250" class="row"><span class="ln">1250</span><span class="code">       RUN_RETRY_JOB</span></div>
+<div id="L1251" class="row"><span class="ln">1251</span><span class="code">       ==================================================================== */</span></div>
+<div id="L1252" class="row proc"><span class="ln">1252</span><span class="code">    PROCEDURE RUN_RETRY_JOB IS</span></div>
+<div id="L1253" class="row"><span class="ln">1253</span><span class="code">        v_run_id      NUMBER;</span></div>
+<div id="L1254" class="row"><span class="ln">1254</span><span class="code">        v_processed   NUMBER := 0;</span></div>
+<div id="L1255" class="row"><span class="ln">1255</span><span class="code">        v_success     NUMBER := 0;</span></div>
+<div id="L1256" class="row"><span class="ln">1256</span><span class="code">        v_failed      NUMBER := 0;</span></div>
+<div id="L1257" class="row"><span class="ln">1257</span><span class="code">        v_log_id_new  NUMBER;</span></div>
+<div id="L1258" class="row"><span class="ln">1258</span><span class="code">        v_status      VARCHAR2(20);</span></div>
+<div id="L1259" class="row fix"><span class="ln">1259</span><span class="code">        -- FIX: capture SQLERRM</span></div>
+<div id="L1260" class="row"><span class="ln">1260</span><span class="code">        v_err_msg     VARCHAR2(4000);</span></div>
+<div id="L1261" class="row"><span class="ln">1261</span><span class="code">    BEGIN</span></div>
+<div id="L1262" class="row"><span class="ln">1262</span><span class="code">        INSERT INTO CRM_MPM_JOB_RUN_HISTORY (JOB_NAME, STATUS)</span></div>
+<div id="L1263" class="row"><span class="ln">1263</span><span class="code">        VALUES ('RETRY_JOB', 'RUNNING')</span></div>
+<div id="L1264" class="row"><span class="ln">1264</span><span class="code">        RETURNING RUN_ID INTO v_run_id;</span></div>
+<div id="L1265" class="row"><span class="ln">1265</span><span class="code">        COMMIT;</span></div>
+<div id="L1266" class="row"><span class="ln">1266</span><span class="code"></span></div>
+<div id="L1267" class="row"><span class="ln">1267</span><span class="code">        FOR rec IN (</span></div>
+<div id="L1268" class="row"><span class="ln">1268</span><span class="code">            SELECT L.LOG_ID, L.REGISTRY_ID, L.SOURCE_RECORD_ID,</span></div>
+<div id="L1269" class="row"><span class="ln">1269</span><span class="code">                   L.RETRY_COUNT, L.TRANSACTION_GROUP_ID,</span></div>
+<div id="L1270" class="row"><span class="ln">1270</span><span class="code">                   L.ATTEMPT_NO,</span></div>
+<div id="L1271" class="row"><span class="ln">1271</span><span class="code">                   R.MAX_RETRY_COUNT, R.RETRY_INTERVAL_MINUTES</span></div>
+<div id="L1272" class="row"><span class="ln">1272</span><span class="code">            FROM CRM_MPM_CRM_INTEGRATION_LOG L</span></div>
+<div id="L1273" class="row"><span class="ln">1273</span><span class="code">            JOIN CRM_MPM_API_REGISTRY         R ON R.REGISTRY_ID = L.REGISTRY_ID</span></div>
+<div id="L1274" class="row"><span class="ln">1274</span><span class="code">            WHERE L.FINAL_STATUS    IN ('FAILED','TIMEOUT')</span></div>
+<div id="L1275" class="row"><span class="ln">1275</span><span class="code">              AND L.RETRY_COUNT     &lt;  R.MAX_RETRY_COUNT</span></div>
+<div id="L1276" class="row"><span class="ln">1276</span><span class="code">              AND L.IS_FINAL_ATTEMPT = 'N'</span></div>
+<div id="L1277" class="row crit"><span class="ln">1277</span><span class="code">              AND L.FINAL_STATUS    NOT IN ('RETRY_IN_PROGRESS','RETRY_SENT','EXHAUSTED')</span></div>
+<div id="L1278" class="row"><span class="ln">1278</span><span class="code">              AND (L.NEXT_RETRY_DATE IS NULL OR L.NEXT_RETRY_DATE &lt;= SYSTIMESTAMP)</span></div>
+<div id="L1279" class="row"><span class="ln">1279</span><span class="code">              AND R.IS_ACTIVE = 'Y'</span></div>
+<div id="L1280" class="row"><span class="ln">1280</span><span class="code">        ) LOOP</span></div>
+<div id="L1281" class="row"><span class="ln">1281</span><span class="code"></span></div>
+<div id="L1282" class="row"><span class="ln">1282</span><span class="code">            v_processed := v_processed + 1;</span></div>
+<div id="L1283" class="row"><span class="ln">1283</span><span class="code"></span></div>
+<div id="L1284" class="row"><span class="ln">1284</span><span class="code">            BEGIN</span></div>
+<div id="L1285" class="row cmt"><span class="ln">1285</span><span class="code">                -- Mark original row as final attempt BEFORE calling SEND_TO_APIC</span></div>
+<div id="L1286" class="row"><span class="ln">1286</span><span class="code">                IF rec.RETRY_COUNT + 1 &gt;= rec.MAX_RETRY_COUNT THEN</span></div>
+<div id="L1287" class="row"><span class="ln">1287</span><span class="code">                    UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1288" class="row"><span class="ln">1288</span><span class="code">                    SET IS_FINAL_ATTEMPT = 'Y'</span></div>
+<div id="L1289" class="row"><span class="ln">1289</span><span class="code">                    WHERE LOG_ID = rec.LOG_ID;</span></div>
+<div id="L1290" class="row"><span class="ln">1290</span><span class="code">                END IF;</span></div>
+<div id="L1291" class="row"><span class="ln">1291</span><span class="code"></span></div>
+<div id="L1292" class="row fix"><span class="ln">1292</span><span class="code">                -- FIX: Update NEXT_RETRY_DATE on ORIGINAL row BEFORE calling SEND_TO_APIC</span></div>
+<div id="L1293" class="row cmt"><span class="ln">1293</span><span class="code">                -- This prevents retry job from picking up same row again</span></div>
+<div id="L1294" class="row cmt"><span class="ln">1294</span><span class="code">                -- even if SEND_TO_APIC takes time or the job runs concurrently</span></div>
+<div id="L1295" class="row"><span class="ln">1295</span><span class="code">                UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1296" class="row"><span class="ln">1296</span><span class="code">                SET NEXT_RETRY_DATE  = SYSTIMESTAMP + (rec.RETRY_INTERVAL_MINUTES / 1440),</span></div>
+<div id="L1297" class="row"><span class="ln">1297</span><span class="code">                    RETRY_COUNT      = rec.RETRY_COUNT + 1,</span></div>
+<div id="L1298" class="row"><span class="ln">1298</span><span class="code">                    IS_FINAL_ATTEMPT = CASE WHEN rec.RETRY_COUNT + 1 &gt;= rec.MAX_RETRY_COUNT</span></div>
+<div id="L1299" class="row"><span class="ln">1299</span><span class="code">                                           THEN 'Y' ELSE 'N' END,</span></div>
+<div id="L1300" class="row crit"><span class="ln">1300</span><span class="code">                    FINAL_STATUS     = 'RETRY_IN_PROGRESS',</span></div>
+<div id="L1301" class="row"><span class="ln">1301</span><span class="code">                    UPDATED_DATE     = SYSTIMESTAMP</span></div>
+<div id="L1302" class="row"><span class="ln">1302</span><span class="code">                WHERE LOG_ID = rec.LOG_ID;</span></div>
+<div id="L1303" class="row"><span class="ln">1303</span><span class="code">                COMMIT;</span></div>
+<div id="L1304" class="row"><span class="ln">1304</span><span class="code"></span></div>
+<div id="L1305" class="row cmt"><span class="ln">1305</span><span class="code">                -- SEND_TO_APIC creates a NEW log row for this attempt</span></div>
+<div id="L1306" class="row"><span class="ln">1306</span><span class="code">                SEND_TO_APIC(</span></div>
+<div id="L1307" class="row"><span class="ln">1307</span><span class="code">                    p_registry_id          =&gt; rec.REGISTRY_ID,</span></div>
+<div id="L1308" class="row"><span class="ln">1308</span><span class="code">                    p_key_value            =&gt; rec.SOURCE_RECORD_ID,</span></div>
+<div id="L1309" class="row"><span class="ln">1309</span><span class="code">                    p_transaction_group_id =&gt; rec.TRANSACTION_GROUP_ID,</span></div>
+<div id="L1310" class="row"><span class="ln">1310</span><span class="code">                    p_attempt_no           =&gt; rec.ATTEMPT_NO + 1,</span></div>
+<div id="L1311" class="row"><span class="ln">1311</span><span class="code">                    p_log_id_out           =&gt; v_log_id_new</span></div>
+<div id="L1312" class="row"><span class="ln">1312</span><span class="code">                );</span></div>
+<div id="L1313" class="row"><span class="ln">1313</span><span class="code"></span></div>
+<div id="L1314" class="row fix"><span class="ln">1314</span><span class="code">                -- FIX: Check status on NEW row (the actual push attempt result)</span></div>
+<div id="L1315" class="row"><span class="ln">1315</span><span class="code">                SELECT FINAL_STATUS INTO v_status</span></div>
+<div id="L1316" class="row"><span class="ln">1316</span><span class="code">                FROM CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1317" class="row"><span class="ln">1317</span><span class="code">                WHERE LOG_ID = v_log_id_new;</span></div>
+<div id="L1318" class="row"><span class="ln">1318</span><span class="code"></span></div>
+<div id="L1319" class="row"><span class="ln">1319</span><span class="code">                IF v_status = 'SENT' THEN</span></div>
+<div id="L1320" class="row"><span class="ln">1320</span><span class="code">                    v_success := v_success + 1;</span></div>
+<div id="L1321" class="row cmt"><span class="ln">1321</span><span class="code">                    -- Mark original row as RETRY_SENT so it is no longer picked up</span></div>
+<div id="L1322" class="row"><span class="ln">1322</span><span class="code">                    UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1323" class="row"><span class="ln">1323</span><span class="code">                    SET FINAL_STATUS = 'RETRY_SENT',</span></div>
+<div id="L1324" class="row"><span class="ln">1324</span><span class="code">                        UPDATED_DATE = SYSTIMESTAMP</span></div>
+<div id="L1325" class="row"><span class="ln">1325</span><span class="code">                    WHERE LOG_ID = rec.LOG_ID;</span></div>
+<div id="L1326" class="row"><span class="ln">1326</span><span class="code">                ELSE</span></div>
+<div id="L1327" class="row"><span class="ln">1327</span><span class="code">                    v_failed := v_failed + 1;</span></div>
+<div id="L1328" class="row cmt"><span class="ln">1328</span><span class="code">                    -- Push failed again — mark original row back to FAILED</span></div>
+<div id="L1329" class="row cmt"><span class="ln">1329</span><span class="code">                    -- so it can be retried next interval (if retries remaining)</span></div>
+<div id="L1330" class="row crit"><span class="ln">1330</span><span class="code">                    -- or EXHAUSTED if max reached</span></div>
+<div id="L1331" class="row"><span class="ln">1331</span><span class="code">                    IF rec.RETRY_COUNT + 1 &gt;= rec.MAX_RETRY_COUNT THEN</span></div>
+<div id="L1332" class="row"><span class="ln">1332</span><span class="code">                        UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1333" class="row crit"><span class="ln">1333</span><span class="code">                        SET FINAL_STATUS     = 'EXHAUSTED',</span></div>
+<div id="L1334" class="row crit"><span class="ln">1334</span><span class="code">                            ERROR_CODE       = 'EXHAUSTED',</span></div>
+<div id="L1335" class="row"><span class="ln">1335</span><span class="code">                            IS_FINAL_ATTEMPT = 'Y',</span></div>
+<div id="L1336" class="row"><span class="ln">1336</span><span class="code">                            UPDATED_DATE     = SYSTIMESTAMP</span></div>
+<div id="L1337" class="row"><span class="ln">1337</span><span class="code">                        WHERE LOG_ID = rec.LOG_ID;</span></div>
+<div id="L1338" class="row"><span class="ln">1338</span><span class="code">                    ELSE</span></div>
+<div id="L1339" class="row"><span class="ln">1339</span><span class="code">                        UPDATE CRM_MPM_CRM_INTEGRATION_LOG</span></div>
+<div id="L1340" class="row"><span class="ln">1340</span><span class="code">                        SET FINAL_STATUS = 'FAILED',</span></div>
+<div id="L1341" class="row"><span class="ln">1341</span><span class="code">                            UPDATED_DATE = SYSTIMESTAMP</span></div>
+<div id="L1342" class="row"><span class="ln">1342</span><span class="code">                        WHERE LOG_ID = rec.LOG_ID;</span></div>
+<div id="L1343" class="row"><span class="ln">1343</span><span class="code">                    END IF;</span></div>
+<div id="L1344" class="row"><span class="ln">1344</span><span class="code">                END IF;</span></div>
+<div id="L1345" class="row"><span class="ln">1345</span><span class="code"></span></div>
+<div id="L1346" class="row"><span class="ln">1346</span><span class="code">                COMMIT;</span></div>
+<div id="L1347" class="row"><span class="ln">1347</span><span class="code"></span></div>
+<div id="L1348" class="row"><span class="ln">1348</span><span class="code">            EXCEPTION</span></div>
+<div id="L1349" class="row"><span class="ln">1349</span><span class="code">                WHEN OTHERS THEN</span></div>
+<div id="L1350" class="row"><span class="ln">1350</span><span class="code">                    v_failed := v_failed + 1;</span></div>
+<div id="L1351" class="row"><span class="ln">1351</span><span class="code">                    NULL;</span></div>
+<div id="L1352" class="row"><span class="ln">1352</span><span class="code">            END;</span></div>
+<div id="L1353" class="row"><span class="ln">1353</span><span class="code">        END LOOP;</span></div>
+<div id="L1354" class="row"><span class="ln">1354</span><span class="code"></span></div>
+<div id="L1355" class="row"><span class="ln">1355</span><span class="code">        UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L1356" class="row"><span class="ln">1356</span><span class="code">        SET END_TIME          = SYSTIMESTAMP,</span></div>
+<div id="L1357" class="row"><span class="ln">1357</span><span class="code">            RECORDS_PROCESSED = v_processed,</span></div>
+<div id="L1358" class="row"><span class="ln">1358</span><span class="code">            RECORDS_SUCCESS   = v_success,</span></div>
+<div id="L1359" class="row"><span class="ln">1359</span><span class="code">            RECORDS_FAILED    = v_failed,</span></div>
+<div id="L1360" class="row"><span class="ln">1360</span><span class="code">            STATUS            = 'COMPLETED'</span></div>
+<div id="L1361" class="row"><span class="ln">1361</span><span class="code">        WHERE RUN_ID = v_run_id;</span></div>
+<div id="L1362" class="row"><span class="ln">1362</span><span class="code"></span></div>
+<div id="L1363" class="row"><span class="ln">1363</span><span class="code">        COMMIT;</span></div>
+<div id="L1364" class="row"><span class="ln">1364</span><span class="code"></span></div>
+<div id="L1365" class="row"><span class="ln">1365</span><span class="code">    EXCEPTION</span></div>
+<div id="L1366" class="row"><span class="ln">1366</span><span class="code">        WHEN OTHERS THEN</span></div>
+<div id="L1367" class="row"><span class="ln">1367</span><span class="code">            v_err_msg := SQLERRM;</span></div>
+<div id="L1368" class="row"><span class="ln">1368</span><span class="code">            UPDATE CRM_MPM_JOB_RUN_HISTORY</span></div>
+<div id="L1369" class="row"><span class="ln">1369</span><span class="code">            SET END_TIME      = SYSTIMESTAMP,</span></div>
+<div id="L1370" class="row"><span class="ln">1370</span><span class="code">                STATUS        = 'ERROR',</span></div>
+<div id="L1371" class="row"><span class="ln">1371</span><span class="code">                ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000)</span></div>
+<div id="L1372" class="row"><span class="ln">1372</span><span class="code">            WHERE RUN_ID = v_run_id;</span></div>
+<div id="L1373" class="row"><span class="ln">1373</span><span class="code">            COMMIT;</span></div>
+<div id="L1374" class="row"><span class="ln">1374</span><span class="code">            RAISE;</span></div>
+<div id="L1375" class="row proc"><span class="ln">1375</span><span class="code">    END RUN_RETRY_JOB;</span></div>
+<div id="L1376" class="row"><span class="ln">1376</span><span class="code"></span></div>
+<div id="L1377" class="row proc"><span class="ln">1377</span><span class="code">END PKG_CRM_INTEGRATION;</span></div>
+<div id="L1378" class="row"><span class="ln">1378</span><span class="code">/</span></div>
+</body></html>
