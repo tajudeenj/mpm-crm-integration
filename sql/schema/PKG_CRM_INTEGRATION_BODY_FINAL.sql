@@ -1,6 +1,9 @@
-SET DEFINE OFF
+create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
+/*
 
-CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
+    Name: Tajudeen Jalaudin
+    Date: 12-July-2026
+/*
 
     /* ====================================================================
        UTILITIES
@@ -20,7 +23,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
        CYCLE'd automatically — no manual reset needed, concurrency-safe
        across multiple sessions since Oracle sequences are atomic).
        Mirrors Java's UniqueIdGenerator exactly — same channel/format/width
-       by default (814 / YYYYMMDDHH24MISSFF3 / 4 digits).
+       by default (817 / YYYYMMDDHH24MISSFF3 / 4 digits).
        ==================================================================== */
     FUNCTION GENERATE_UNIQUE_ID RETURN VARCHAR2 IS
         v_channel_id       VARCHAR2(10);
@@ -48,17 +51,17 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
         WHEN NO_DATA_FOUND THEN
             -- Config missing or inactive — fall back to a safe default
             -- so SEND_TO_APIC never fails purely because of this header.
-            RETURN '814' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3') ||
+            RETURN '817' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3') ||
                    LPAD(TO_CHAR(CRM_MPM_UNIQUE_ID_SEQ.NEXTVAL), 4, '0');
         WHEN OTHERS THEN
             -- Never let unique-id generation fail the whole send — log and
             -- fall back to a timestamp-only id so the request still goes out.
-            RETURN '814' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3');
+            RETURN '817' || TO_CHAR(SYSTIMESTAMP, 'YYYYMMDDHH24MISSFF3');
     END GENERATE_UNIQUE_ID;
 
 
     /* ====================================================================
-       TOKEN MANAGEMENT
+       TOKEN MANAGEMENT 
        ==================================================================== */
     FUNCTION GET_BEARER_TOKEN(p_cred_code IN VARCHAR2) RETURN VARCHAR2 IS
         v_cred            CRM_MPM_API_CREDENTIALS%ROWTYPE;
@@ -85,24 +88,105 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             RETURN v_cred.TOKEN_CACHE_VALUE;
         END IF;
 
+        -- reads plain secret (encryption handled separately)
         v_client_secret := v_cred.CLIENT_SECRET_REF;  -- reads from CRM_MPM_API_CREDENTIALS table
 
+
+        -- Encryption fallback: try BLOB decrypt, fall back to plain text
+        DECLARE
+            v_enc_key RAW(32);
+        BEGIN
+            SELECT ENCRYPT_KEY INTO v_enc_key
+            FROM CRM_MPM_ENCRYPT_CONFIG
+            WHERE IS_ACTIVE = 'Y' AND ROWNUM = 1;
+
+            v_client_secret := UTL_RAW.CAST_TO_VARCHAR2(
+                DBMS_CRYPTO.DECRYPT(
+                    src => v_cred.CLIENT_SECRET_ENCRYPTED,
+                    typ => DBMS_CRYPTO.ENCRYPT_AES256 +
+                           DBMS_CRYPTO.CHAIN_CBC +
+                           DBMS_CRYPTO.PAD_PKCS5,
+                    key => v_enc_key
+                )
+            );
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- Fallback to plain text if encrypted not available
+                v_client_secret := v_cred.CLIENT_SECRET_REF;
+        END;
+
+
+    /*
         v_request_body :=
             'grant_type=' || v_cred.GRANT_TYPE ||
-            '&client_id=' || UTL_URL.ESCAPE(v_cred.CLIENT_ID, TRUE) ||
-            '&client_secret=' || UTL_URL.ESCAPE(v_client_secret, TRUE) ||
+            '=' || UTL_URL.ESCAPE(v_cred.CLIENT_ID, TRUE) ||
+            '=' || UTL_URL.ESCAPE(v_client_secret, TRUE) ||
             CASE WHEN v_cred.SCOPE IS NOT NULL
-                 THEN '&scope=' || UTL_URL.ESCAPE(v_cred.SCOPE, TRUE)
+                 THEN '=' || UTL_URL.ESCAPE(v_cred.SCOPE, TRUE)
                  ELSE NULL END;
+                 */
+          
+          v_request_body :=
+       'grant_type='
+    || UTL_URL.ESCAPE(TRIM(v_cred.GRANT_TYPE), TRUE)
+
+    || CHR(38)
+    || 'client_id='
+    || UTL_URL.ESCAPE(TRIM(v_cred.CLIENT_ID), TRUE)
+
+    || CHR(38)
+    || 'client_secret='
+    || UTL_URL.ESCAPE(v_client_secret, TRUE)
+
+    || CASE
+           WHEN TRIM(v_cred.SCOPE) IS NOT NULL
+           THEN CHR(38)
+                || 'scope='
+                || UTL_URL.ESCAPE(TRIM(v_cred.SCOPE), TRUE)
+           ELSE NULL
+       END;
+
+       
+                 
+
+
 
         UTL_HTTP.SET_TRANSFER_TIMEOUT(30);
         -- Set Oracle Wallet for HTTPS — required for any TOKEN_URL using https://
         IF v_cred.WALLET_PATH IS NOT NULL THEN
+
             UTL_HTTP.SET_WALLET(v_cred.WALLET_PATH, v_cred.WALLET_PASSWORD);
+/*
+           DECLARE
+               v_wallet_pwd VARCHAR2(4000);
+               v_key        RAW(32);
+           BEGIN
+               IF v_cred.WALLET_PASSWORD_ENC IS NOT NULL THEN
+                   SELECT ENCRYPT_KEY INTO v_key
+                   FROM   CRM_MPM_ENCRYPT_CONFIG
+                   WHERE  IS_ACTIVE = 'Y' AND ROWNUM = 1;
+
+                   v_wallet_pwd := UTL_RAW.CAST_TO_VARCHAR2(
+                       DBMS_CRYPTO.DECRYPT(
+                           src => v_cred.WALLET_PASSWORD_ENC,
+                           typ => DBMS_CRYPTO.ENCRYPT_AES256 +
+                                  DBMS_CRYPTO.CHAIN_CBC       +
+                                  DBMS_CRYPTO.PAD_PKCS5,
+                           key => v_key
+                       )
+                   );
+               ELSE
+                   v_wallet_pwd := v_cred.WALLET_PASSWORD;  -- fallback plain text
+               END IF;
+               UTL_HTTP.SET_WALLET(v_cred.WALLET_PATH, v_wallet_pwd);
+           END;
+*/
+
         END IF;
         v_http_req := UTL_HTTP.BEGIN_REQUEST(v_cred.TOKEN_URL, 'POST', 'HTTP/1.1');
         UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/x-www-form-urlencoded');
-        UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', LENGTH(v_request_body));
+        --UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', LENGTH(v_request_body));
+        UTL_HTTP.SET_HEADER( v_http_req, 'Content-Length',TO_CHAR(LENGTHB(v_request_body)));
         UTL_HTTP.WRITE_TEXT(v_http_req, v_request_body);
 
         v_http_resp := UTL_HTTP.GET_RESPONSE(v_http_req);
@@ -168,6 +252,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
         v_result_clob   CLOB;
         v_json_obj      JSON_OBJECT_T := JSON_OBJECT_T();
 
+
+
         CURSOR c_map(p_mapping_name VARCHAR2) IS
             SELECT SOURCE_COLUMN, JSON_PATH, DATA_TYPE, DATE_FORMAT, DISPLAY_ORDER
             FROM CRM_MPM_API_FIELD_MAPPING
@@ -180,6 +266,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
         v_source_proc   VARCHAR2(128);
         v_ref_cursor    SYS_REFCURSOR;
         v_val_varchar   VARCHAR2(4000);
+        v_date DATE;
 
         PROCEDURE SET_NESTED_VALUE(
             p_root      IN OUT NOCOPY JSON_OBJECT_T,
@@ -192,6 +279,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             v_rest  VARCHAR2(200);
             v_child JSON_OBJECT_T;
         BEGIN
+
             v_dot := INSTR(p_path, '.');
             IF v_dot = 0 THEN
                 CASE p_data_type
@@ -286,11 +374,36 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             END IF;
         END IF;
 
+
         FOR rec IN c_map(v_mapping_name) LOOP
             v_val_varchar := NULL;
             FOR i IN 1..v_col_cnt LOOP
                 IF UPPER(v_desc_tab(i).col_name) = UPPER(rec.SOURCE_COLUMN) THEN
                     DBMS_SQL.COLUMN_VALUE(v_cursor_id, i, v_val_varchar);
+                    DBMS_OUTPUT.PUT_LINE(
+                       rec.SOURCE_COLUMN || '=[' || v_val_varchar || ']'
+                    );
+                -- ADD Date formate -- inside existing IF, after COLUMN_VALUE
+                   IF v_desc_tab(i).col_type = 12 
+                   AND v_val_varchar IS NOT NULL THEN
+                    BEGIN
+
+                        v_val_varchar := TO_CHAR(
+                            TO_DATE(v_val_varchar, 'DD-MON-RR HH24:MI:SS'),
+                           NVL(rec.DATE_FORMAT, 'DD-MON-YY HH24:MI:SS'));
+
+
+
+                    EXCEPTION
+                            WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE(
+            'Date conversion failed: ' ||
+            v_val_varchar || ' Error=' || SQLERRM
+        );
+
+                    END;
+                END IF;
+
                 END IF;
             END LOOP;
             SET_NESTED_VALUE(v_json_obj, rec.JSON_PATH, v_val_varchar, rec.DATA_TYPE);
@@ -307,6 +420,91 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             END IF;
             RAISE;
     END BUILD_JSON_PAYLOAD;
+
+    /* ====================================================================
+       INTERNAL HELPER  sends a CLOB payload to APIC
+       Used by both SEND_TO_APIC and SUBMIT_TO_STAGING
+       KEY FIX: Transfer-Encoding chunked (no Content-Length)
+                WRITE_TEXT with VARCHAR2 â€” Arabic works correctly
+       ==================================================================== */
+    PROCEDURE SEND_PAYLOAD_TO_APIC(
+        p_endpoint      IN  VARCHAR2,
+        p_http_method   IN  VARCHAR2,
+        p_token         IN  VARCHAR2,
+        p_wallet_path   IN  VARCHAR2,
+        p_wallet_pwd    IN  VARCHAR2,
+        p_txn_group     IN  VARCHAR2,
+        p_unique_id     IN  VARCHAR2,
+        p_rec_type      IN  VARCHAR2,
+        p_rec_action    IN  VARCHAR2,
+        p_api_version   IN  VARCHAR2,
+        p_payload       IN  CLOB,
+        p_status_code   OUT VARCHAR2,
+        p_response      OUT CLOB
+    ) IS
+        v_http_req  UTL_HTTP.REQ;
+        v_http_resp UTL_HTTP.RESP;
+        v_buffer    VARCHAR2(32767);
+        v_full_url  VARCHAR2(1000);
+        v_offset    PLS_INTEGER := 1;
+        v_amount    PLS_INTEGER := 32767;
+        v_len       PLS_INTEGER;
+        v_chunk     VARCHAR2(32767);
+    BEGIN
+        -- Build URL with api-version
+        v_full_url := p_endpoint;
+        IF p_api_version IS NOT NULL THEN
+            IF INSTR(v_full_url, '?') > 0 THEN
+                v_full_url := v_full_url || '-version=' || p_api_version;
+            ELSE
+                v_full_url := v_full_url || '?api-version=' || p_api_version;
+            END IF;
+        END IF;
+
+        UTL_HTTP.SET_TRANSFER_TIMEOUT(60);
+        IF p_wallet_path IS NOT NULL THEN
+            UTL_HTTP.SET_WALLET(p_wallet_path, p_wallet_pwd);
+        END IF;
+
+        v_http_req := UTL_HTTP.BEGIN_REQUEST(v_full_url, p_http_method, 'HTTP/1.1');
+
+        -- Headers
+        -- NOTE: Transfer-Encoding chunked used instead of Content-Length
+        -- Content-Length causes Arabic corruption (char count != byte count for multibyte)
+        -- Transfer-Encoding chunked lets Oracle handle byte boundaries automatically
+        UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type',           'application/json; charset=UTF-8');
+        UTL_HTTP.SET_HEADER(v_http_req, 'Authorization',          'Bearer ' || p_token);
+        UTL_HTTP.SET_HEADER(v_http_req, 'X-Transaction-Group-Id', p_txn_group);
+        UTL_HTTP.SET_HEADER(v_http_req, 'record-type',            p_rec_type);
+        UTL_HTTP.SET_HEADER(v_http_req, 'record-action',          p_rec_action);
+        UTL_HTTP.SET_HEADER(v_http_req, 'x-unique-id',            p_unique_id);
+        UTL_HTTP.SET_HEADER(v_http_req, 'Transfer-Encoding',      'chunked');
+
+        -- Send payload in chunks using WRITE_TEXT
+        -- WRITE_TEXT with Transfer-Encoding chunked correctly handles Arabic/multibyte
+        v_len := DBMS_LOB.GETLENGTH(p_payload);
+        WHILE v_offset <= v_len LOOP
+            v_chunk  := DBMS_LOB.SUBSTR(p_payload, v_amount, v_offset);
+            UTL_HTTP.WRITE_TEXT(v_http_req, v_chunk);
+            v_offset := v_offset + v_amount;
+        END LOOP;
+
+        -- Get response
+        v_http_resp   := UTL_HTTP.GET_RESPONSE(v_http_req);
+        p_status_code := TO_CHAR(v_http_resp.status_code);
+
+        DBMS_LOB.CREATETEMPORARY(p_response, TRUE);
+        BEGIN
+            LOOP
+                UTL_HTTP.READ_TEXT(v_http_resp, v_buffer, 32767);
+                DBMS_LOB.WRITEAPPEND(p_response, LENGTH(v_buffer), v_buffer);
+            END LOOP;
+        EXCEPTION
+            WHEN UTL_HTTP.END_OF_BODY THEN NULL;
+        END;
+        UTL_HTTP.END_RESPONSE(v_http_resp);
+
+    END SEND_PAYLOAD_TO_APIC;
 
 
     /* ====================================================================
@@ -428,37 +626,54 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                 v_full_url := v_reg.APIC_ENDPOINT_URL;
                 IF v_reg.APIC_API_VERSION IS NOT NULL THEN
                     IF INSTR(v_full_url, '?') > 0 THEN
-                        v_full_url := v_full_url || '&api-version=' || v_reg.APIC_API_VERSION;
+                        v_full_url := v_full_url || '-version=' || v_reg.APIC_API_VERSION;
                     ELSE
                         v_full_url := v_full_url || '?api-version=' || v_reg.APIC_API_VERSION;
                     END IF;
                 END IF;
                 v_http_req := UTL_HTTP.BEGIN_REQUEST(v_full_url, v_reg.HTTP_METHOD, 'HTTP/1.1');
             END;
-            UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type',           'application/json; charset=UTF-8');
+            UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type',           'application/json');
+            --UTL_HTTP.SET_BODY_CHARSET(v_http_req, 'UTF-8');
+            --UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/json; charset=UTF-8');
             UTL_HTTP.SET_HEADER(v_http_req, 'Authorization',          'Bearer ' || v_token);
             UTL_HTTP.SET_HEADER(v_http_req, 'X-Transaction-Group-Id', v_txn_group);
             -- Dynamic headers from registry — no hardcoding in package
             UTL_HTTP.SET_HEADER(v_http_req, 'record-type',   v_reg.RECORD_TYPE_HDR);
             UTL_HTTP.SET_HEADER(v_http_req, 'record-action', v_reg.EVENT_CODE_HDR);
             UTL_HTTP.SET_HEADER(v_http_req, 'x-unique-id',            v_unique_id);
-            UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length',         DBMS_LOB.GETLENGTH(v_payload));
+            --UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length',         DBMS_LOB.GETLENGTH(v_payload));
+            UTL_HTTP.SET_HEADER(v_http_req, 'Transfer-Encoding', 'chunked');
+
+
+--            DECLARE
+--                v_offset PLS_INTEGER := 1;
+--                v_amount PLS_INTEGER := 32767;
+--                v_len    PLS_INTEGER := DBMS_LOB.GETLENGTH(v_payload);
+--                v_chunk  VARCHAR2(32767);
+--            BEGIN
+--                WHILE v_offset <= v_len LOOP
+--                    v_chunk  := DBMS_LOB.SUBSTR(v_payload, v_amount, v_offset);
+--                    DBMS_OUTPUT.PUT_LINE(
+--                         DBMS_LOB.SUBSTR(v_payload, 4000, 1));
+--                    UTL_HTTP.WRITE_TEXT(v_http_req, v_chunk);
+--                    v_offset := v_offset + LENGTH(v_chunk);
+--                END LOOP;
+--            END;
 
             DECLARE
                 v_offset PLS_INTEGER := 1;
-                v_amount PLS_INTEGER := 8191; -- smaller chunk for RAW conversion
+                v_amount PLS_INTEGER := 8191;
                 v_len    PLS_INTEGER := DBMS_LOB.GETLENGTH(v_payload);
                 v_chunk  VARCHAR2(32767);
                 v_raw    RAW(32767);
             BEGIN
                 WHILE v_offset <= v_len LOOP
                     v_chunk  := DBMS_LOB.SUBSTR(v_payload, v_amount, v_offset);
-                    -- Use WRITE_RAW with UTF8 conversion to correctly send
-                    -- Arabic and other multi-byte characters
-                    -- CONVERT ensures AL16UTF16 data is sent as proper UTF8
-                    v_raw    := UTL_RAW.CAST_TO_RAW(
-                                    CONVERT(v_chunk, 'UTF8', 'AL16UTF16'));
+
+                    v_raw := UTL_RAW.CAST_TO_RAW(CONVERT(v_chunk,'AL32UTF8','AL32UTF8'));
                     UTL_HTTP.WRITE_RAW(v_http_req, v_raw);
+
                     v_offset := v_offset + LENGTH(v_chunk);
                 END LOOP;
             END;
@@ -496,7 +711,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                 -- Parse response_timestamp into dedicated variable
                 v_ack_response_ts := JSON_VALUE(v_response, '$.response_timestamp');
 
-                -- LEG 1 status: 0000=accepted (LEG 2 will follow), 9999=record not created in PxRM
+                -- LEG 1 status: 0000=accepted (LEG 2 will follow), 9999=header/auth error
                 IF NVL(v_ack_status_code,'0000') = '0000' THEN
                     v_final_status  := 'SENT';
                     v_error_code    := NULL;
@@ -634,6 +849,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             FROM CRM_MPM_API_REGISTRY r
             JOIN CRM_MPM_API_WATERMARK w ON w.REGISTRY_ID = r.REGISTRY_ID
             WHERE r.IS_ACTIVE = 'Y'
+            AND r.SOURCE_TYPE = 'VIEW'
+            AND r.EXECUTION_ORDER < 99
+            ORDER BY r.EXECUTION_ORDER
         ) LOOP
 
             v_max_ts := reg.LAST_PROCESSED_TS;
@@ -641,6 +859,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             v_sql := 'SELECT ' || reg.SOURCE_KEY_COL || ', ' || reg.SOURCE_FILTER_COL ||
                      ' FROM '  || reg.SOURCE_VIEW ||
                      ' WHERE ' || reg.SOURCE_FILTER_COL || ' > :wm' ||
+                     -- ' WHERE (:wm IS NULL or ' || reg.SOURCE_FILTER_COL || ' > :wm )' ||
                      ' ORDER BY ' || reg.SOURCE_FILTER_COL;
 
             v_cursor_id := DBMS_SQL.OPEN_CURSOR;
@@ -967,7 +1186,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             -- CASE 8: result_code=PRIMARY_FIELD_MISSING  → FINAL_STATUS=VALIDATION_FAILED
             -- CASE 9: result_code=LOOKUP_VALIDATION_FAILED→ FINAL_STATUS=RECORD_NOT_FOUND
             -- CASE 10:result_code=FAILURE                → FINAL_STATUS=FAILED
-            IF v_result_code = 'SUCCESS' OR v_cb_status = '0000' THEN
+           IF v_result_code = 'SUCCESS' OR v_cb_status = '0000' THEN
                 v_final_status := 'SUCCESS';
                 v_error_code   := 'SUCCESS';
             ELSIF v_cb_status = '9999' AND v_result_code IS NULL THEN
@@ -978,9 +1197,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             ELSIF v_result_code = 'VALIDATION_FAILED' THEN
                 v_final_status := 'VALIDATION_FAILED';
                 v_error_code   := 'VALIDATION_FAILED';
+
             ELSIF v_result_code = 'RECORD_NOT_FOUND' THEN
                 v_final_status := 'RECORD_NOT_FOUND';
                 v_error_code   := 'RECORD_NOT_FOUND';
+
             ELSIF v_result_code = 'DUPLICATE_RECORD' THEN
                 v_final_status := 'DUPLICATE_RECORD';
                 v_error_code   := 'DUPLICATE_RECORD';
@@ -1012,12 +1233,15 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             ELSE
                 -- Unknown result_code — validate against master table
                 v_final_status := 'FAILED';
+
                 BEGIN
-                    SELECT ERROR_CODE INTO v_error_code
+                    SELECT ERROR_CODE
+                    INTO v_error_code
                     FROM CRM_MPM_ERROR_CODE_MASTER
-                    WHERE ERROR_CODE = NVL(v_result_code, 'UNKNOWN_ERROR');
+                    WHERE ERROR_CODE = NVL(v_result_code,'UNKNOWN_ERROR');
                 EXCEPTION
-                    WHEN NO_DATA_FOUND THEN v_error_code := 'UNKNOWN_ERROR';
+                    WHEN NO_DATA_FOUND THEN
+                        v_error_code := 'UNKNOWN_ERROR';
                 END;
             END IF;
 
@@ -1216,7 +1440,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             IF v_retry_count >= v_max_retry THEN
                 UPDATE CRM_MPM_CRM_INTEGRATION_LOG
                 SET FINAL_STATUS = 'EXHAUSTED',
-                    ERROR_CODE   = 'EXHAUSTED'
+                    ERROR_CODE   = 'EXHAUSTED',
+                    -- Confirmed 18-Sep-2026: EXHAUSTED is terminal, no further retry
+                    IS_FINAL_ATTEMPT = 'Y'
                 WHERE LOG_ID = v_log_id;
             END IF;
 
@@ -1248,6 +1474,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
 
     /* ====================================================================
        RUN_RETRY_JOB
+       UNKNOWN_ERROR added 18-Sep-2026 — retryable per CRM team confirmation
        ==================================================================== */
     PROCEDURE RUN_RETRY_JOB IS
         v_run_id      NUMBER;
@@ -1271,38 +1498,36 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                    R.MAX_RETRY_COUNT, R.RETRY_INTERVAL_MINUTES
             FROM CRM_MPM_CRM_INTEGRATION_LOG L
             JOIN CRM_MPM_API_REGISTRY         R ON R.REGISTRY_ID = L.REGISTRY_ID
-            WHERE L.FINAL_STATUS    IN ('FAILED','TIMEOUT')
+            --WHERE L.FINAL_STATUS    IN ('FAILED','TIMEOUT')
+            WHERE L.FINAL_STATUS IN ('FAILED','TIMEOUT','UNKNOWN_ERROR')
               AND L.RETRY_COUNT     <  R.MAX_RETRY_COUNT
               AND L.IS_FINAL_ATTEMPT = 'N'
-              AND L.FINAL_STATUS    NOT IN ('RETRY_IN_PROGRESS','RETRY_SENT','EXHAUSTED')
               AND (L.NEXT_RETRY_DATE IS NULL OR L.NEXT_RETRY_DATE <= SYSTIMESTAMP)
               AND R.IS_ACTIVE = 'Y'
-        ) LOOP
+              -- KEY FIX: only retry transient errors, not permanent business failures
+              AND EXISTS (
+                   SELECT 1
+                   FROM   CRM_MPM_ERROR_CODE_MASTER e
+                   WHERE  e.ERROR_CODE   = L.ERROR_CODE
+                   AND    e.IS_RETRYABLE = 'Y'
+               )
+          ) LOOP
 
             v_processed := v_processed + 1;
 
             BEGIN
-                -- Mark original row as final attempt BEFORE calling SEND_TO_APIC
+
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET RETRY_COUNT = RETRY_COUNT +1,
+                    UPDATED_DATE = SYSTIMESTAMP
+                WHERE LOG_ID = rec.LOG_ID;
+
                 IF rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT THEN
                     UPDATE CRM_MPM_CRM_INTEGRATION_LOG
                     SET IS_FINAL_ATTEMPT = 'Y'
                     WHERE LOG_ID = rec.LOG_ID;
                 END IF;
 
-                -- FIX: Update NEXT_RETRY_DATE on ORIGINAL row BEFORE calling SEND_TO_APIC
-                -- This prevents retry job from picking up same row again
-                -- even if SEND_TO_APIC takes time or the job runs concurrently
-                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                SET NEXT_RETRY_DATE  = SYSTIMESTAMP + (rec.RETRY_INTERVAL_MINUTES / 1440),
-                    RETRY_COUNT      = rec.RETRY_COUNT + 1,
-                    IS_FINAL_ATTEMPT = CASE WHEN rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT
-                                           THEN 'Y' ELSE 'N' END,
-                    FINAL_STATUS     = 'RETRY_IN_PROGRESS',
-                    UPDATED_DATE     = SYSTIMESTAMP
-                WHERE LOG_ID = rec.LOG_ID;
-                COMMIT;
-
-                -- SEND_TO_APIC creates a NEW log row for this attempt
                 SEND_TO_APIC(
                     p_registry_id          => rec.REGISTRY_ID,
                     p_key_value            => rec.SOURCE_RECORD_ID,
@@ -1311,35 +1536,27 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
                     p_log_id_out           => v_log_id_new
                 );
 
-                -- FIX: Check status on NEW row (the actual push attempt result)
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET NEXT_RETRY_DATE  = SYSTIMESTAMP + (rec.RETRY_INTERVAL_MINUTES / 1440),
+                    RETRY_COUNT      = rec.RETRY_COUNT + 1,
+                    IS_FINAL_ATTEMPT = CASE WHEN rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT
+                                           THEN 'Y' ELSE 'N' END
+                WHERE LOG_ID = v_log_id_new;
+
                 SELECT FINAL_STATUS INTO v_status
                 FROM CRM_MPM_CRM_INTEGRATION_LOG
                 WHERE LOG_ID = v_log_id_new;
 
                 IF v_status = 'SENT' THEN
                     v_success := v_success + 1;
-                    -- Mark original row as RETRY_SENT so it is no longer picked up
-                    UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                    SET FINAL_STATUS = 'RETRY_SENT',
-                        UPDATED_DATE = SYSTIMESTAMP
-                    WHERE LOG_ID = rec.LOG_ID;
                 ELSE
                     v_failed := v_failed + 1;
-                    -- Push failed again — mark original row back to FAILED
-                    -- so it can be retried next interval (if retries remaining)
-                    -- or EXHAUSTED if max reached
                     IF rec.RETRY_COUNT + 1 >= rec.MAX_RETRY_COUNT THEN
                         UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                        SET FINAL_STATUS     = 'EXHAUSTED',
-                            ERROR_CODE       = 'EXHAUSTED',
-                            IS_FINAL_ATTEMPT = 'Y',
-                            UPDATED_DATE     = SYSTIMESTAMP
-                        WHERE LOG_ID = rec.LOG_ID;
-                    ELSE
-                        UPDATE CRM_MPM_CRM_INTEGRATION_LOG
-                        SET FINAL_STATUS = 'FAILED',
-                            UPDATED_DATE = SYSTIMESTAMP
-                        WHERE LOG_ID = rec.LOG_ID;
+                        SET FINAL_STATUS = 'EXHAUSTED',
+                            ERROR_CODE   = 'EXHAUSTED',
+                            IS_FINAL_ATTEMPT = 'Y'
+                        WHERE LOG_ID = v_log_id_new;
                     END IF;
                 END IF;
 
@@ -1347,10 +1564,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
 
             EXCEPTION
                 WHEN OTHERS THEN
+--                    v_failed := v_failed + 1;
+--                    NULL;
+                    v_err_msg := SQLERRM;
                     v_failed := v_failed + 1;
-                    NULL;
+                    ROLLBACK;
             END;
-        END LOOP;
+        END LOOP; 
 
         UPDATE CRM_MPM_JOB_RUN_HISTORY
         SET END_TIME          = SYSTIMESTAMP,
@@ -1374,5 +1594,997 @@ CREATE OR REPLACE PACKAGE BODY PKG_CRM_INTEGRATION AS
             RAISE;
     END RUN_RETRY_JOB;
 
+    /* ====================================================================
+       SUBMIT_TO_STAGING
+       Oracle team calls this. Inserts into staging + instant push.
+       If push fails, RUN_STAGING_JOB retries up to 3 times.
+       ==================================================================== */
+    PROCEDURE SUBMIT_TO_STAGING(
+        p_service_name      IN  VARCHAR2,
+        p_source_record_id  IN  VARCHAR2,
+        p_json_payload      IN  CLOB,
+        p_staging_id_out    OUT NUMBER,
+        p_status_out        OUT VARCHAR2
+    ) IS
+        v_staging_id    NUMBER;
+        v_reg           CRM_MPM_API_REGISTRY%ROWTYPE;
+        v_token         VARCHAR2(4000);
+        v_unique_id     VARCHAR2(60);
+        v_txn_group     VARCHAR2(40);
+        v_wallet_path   VARCHAR2(200);
+        v_wallet_pwd    VARCHAR2(200);
+        v_status_code   VARCHAR2(10);
+        v_response      CLOB;
+        v_request_id    VARCHAR2(200);
+        v_err_msg       VARCHAR2(4000);
+    BEGIN
+        -- Validate service exists
+        SELECT * INTO v_reg
+        FROM   CRM_MPM_API_REGISTRY
+        WHERE  SERVICE_NAME = p_service_name
+        AND    IS_ACTIVE    = 'Y';
+
+        -- Insert into staging as PENDING
+        v_staging_id := SEQ_CRM_STAGING.NEXTVAL;
+
+        INSERT INTO CRM_MPM_OUTBOUND_STAGING (
+            STAGING_ID, SERVICE_NAME, SOURCE_RECORD_ID,
+            JSON_PAYLOAD, STATUS, ATTEMPT_NO, MAX_ATTEMPTS,
+            CREATED_DATE, LAST_UPDATED, CREATED_BY
+        ) VALUES (
+            v_staging_id, p_service_name, p_source_record_id,
+            p_json_payload, 'PENDING', 0, 3,
+            SYSDATE, SYSDATE, USER
+        );
+        COMMIT;
+
+        p_staging_id_out := v_staging_id;
+
+        -- -------------------------------------------------------
+        -- INSTANT PUSH
+        -- -------------------------------------------------------
+        BEGIN
+			v_unique_id  := GENERATE_UNIQUE_ID();
+
+            UPDATE CRM_MPM_OUTBOUND_STAGING
+            SET    STATUS      = 'SENDING',X_UNIQUE_ID = v_unique_id,
+                   ATTEMPT_NO  = 1,
+                   LAST_UPDATED = SYSDATE
+            WHERE  STAGING_ID  = v_staging_id;
+            COMMIT;
+
+            v_token      := GET_BEARER_TOKEN(v_reg.CRED_CODE);
+
+            v_txn_group  := NEW_GUID();
+
+            BEGIN
+                SELECT WALLET_PATH, WALLET_PASSWORD
+                INTO   v_wallet_path, v_wallet_pwd
+                FROM   CRM_MPM_API_CREDENTIALS
+                WHERE  CRED_CODE = v_reg.CRED_CODE;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    v_wallet_path := NULL;
+                    v_wallet_pwd  := NULL;
+            END;
+
+            SEND_PAYLOAD_TO_APIC(
+                p_endpoint    => v_reg.APIC_ENDPOINT_URL,
+                p_http_method => v_reg.HTTP_METHOD,
+                p_token       => v_token,
+                p_wallet_path => v_wallet_path,
+                p_wallet_pwd  => v_wallet_pwd,
+                p_txn_group   => v_txn_group,
+                p_unique_id   => v_unique_id,
+                p_rec_type    => v_reg.RECORD_TYPE_HDR,
+                p_rec_action  => v_reg.EVENT_CODE_HDR,
+                p_api_version => v_reg.APIC_API_VERSION,
+                p_payload     => p_json_payload,
+                p_status_code => v_status_code,
+                p_response    => v_response
+            );
+
+            -- Parse request_id from ACK
+            IF v_status_code BETWEEN '200' AND '299' THEN
+                v_request_id := JSON_VALUE(v_response, '$.request_id');
+                IF v_request_id IS NULL THEN
+                    v_request_id := JSON_VALUE(v_response, '$.requestid');
+                END IF;
+            END IF;
+
+            UPDATE CRM_MPM_OUTBOUND_STAGING
+            SET    STATUS           = CASE WHEN v_status_code BETWEEN '200' AND '299'
+                                           THEN 'SENT' ELSE 'FAILED' END,
+                   HTTP_STATUS_CODE = v_status_code,
+                   REQUEST_ID       = v_request_id,
+                   SENT_DATE        = SYSDATE,
+                   LAST_UPDATED     = SYSDATE,
+                   ERROR_MESSAGE    = CASE WHEN v_status_code NOT BETWEEN '200' AND '299'
+                                           THEN DBMS_LOB.SUBSTR(v_response, 4000, 1)
+                                           ELSE NULL END
+            WHERE  STAGING_ID = v_staging_id;
+
+			INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+				REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+				SOURCE_RECORD_ID, TRANSACTION_GROUP_ID,
+				ATTEMPT_NO, REQUEST_PAYLOAD, ACK_RESPONSE,
+				ACK_REQUEST_ID, HTTP_STATUS_CODE,
+				SENT_DATE, FINAL_STATUS,
+				ERROR_CODE, ERROR_MESSAGE, X_UNIQUE_ID
+			) VALUES (
+            v_reg.REGISTRY_ID, v_reg.ENTITY_NAME, v_reg.OPERATION_TYPE,
+            p_source_record_id, v_txn_group,
+            1, p_json_payload, v_response,
+            v_request_id, v_status_code,
+				SYSTIMESTAMP,
+				CASE WHEN v_status_code BETWEEN '200' AND '299'
+					 THEN 'SENT' ELSE 'FAILED' END,
+				CASE WHEN v_status_code NOT BETWEEN '200' AND '299'
+					 THEN 'APIC_ERROR' ELSE NULL END,
+				CASE WHEN v_status_code NOT BETWEEN '200' AND '299'
+					 THEN DBMS_LOB.SUBSTR(v_response, 4000, 1) ELSE NULL END,
+				v_unique_id
+			);
+
+
+            COMMIT;
+
+            p_status_out := CASE WHEN v_status_code BETWEEN '200' AND '299'
+                                 THEN 'SENT'
+                                 ELSE 'FAILED-RETRY-SCHEDULED' END;
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_err_msg := SQLERRM;
+                ROLLBACK;
+                UPDATE CRM_MPM_OUTBOUND_STAGING
+                SET    STATUS        = 'FAILED',
+                       ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000),
+                       LAST_UPDATED  = SYSDATE
+                WHERE  STAGING_ID   = v_staging_id;
+                COMMIT;
+                p_status_out := 'FAILED-RETRY-SCHEDULED';
+        END;
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_staging_id_out := NULL;
+            p_status_out     := 'ERROR: Service [' || p_service_name || '] not found or inactive';
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_staging_id_out := NULL;
+            p_status_out     := 'ERROR: ' || SQLERRM;
+    END SUBMIT_TO_STAGING;
+
+
+    /* ====================================================================
+       RUN_STAGING_JOB
+       Scheduler retries FAILED staging records up to MAX_ATTEMPTS
+       ==================================================================== */
+    PROCEDURE RUN_STAGING_JOB IS
+        v_token       VARCHAR2(4000);
+        v_unique_id   VARCHAR2(60);
+        v_txn_group   VARCHAR2(40);
+        v_wallet_path VARCHAR2(200);
+        v_wallet_pwd  VARCHAR2(200);
+        v_status_code VARCHAR2(10);
+        v_response    CLOB;
+        v_request_id  VARCHAR2(200);
+        v_err_msg     VARCHAR2(4000);
+    BEGIN
+        FOR rec IN (
+            SELECT s.STAGING_ID, s.SERVICE_NAME, s.JSON_PAYLOAD,
+                   s.ATTEMPT_NO, s.MAX_ATTEMPTS,
+                   r.APIC_ENDPOINT_URL, r.HTTP_METHOD,
+                   r.RECORD_TYPE_HDR, r.EVENT_CODE_HDR,
+                   r.APIC_API_VERSION, r.CRED_CODE
+            FROM   CRM_MPM_OUTBOUND_STAGING  s
+            JOIN   CRM_MPM_API_REGISTRY      r
+                ON r.SERVICE_NAME = s.SERVICE_NAME
+               AND r.IS_ACTIVE    = 'Y'
+            WHERE  s.STATUS     = 'FAILED'
+            AND    s.ATTEMPT_NO  < s.MAX_ATTEMPTS
+            ORDER  BY s.CREATED_DATE
+        ) LOOP
+            BEGIN
+                UPDATE CRM_MPM_OUTBOUND_STAGING
+                SET STATUS       = 'SENDING',
+                    ATTEMPT_NO   = ATTEMPT_NO + 1,
+                    LAST_UPDATED = SYSDATE
+                WHERE STAGING_ID = rec.STAGING_ID;
+                COMMIT;
+
+                v_token     := GET_BEARER_TOKEN(rec.CRED_CODE);
+                v_unique_id := GENERATE_UNIQUE_ID();
+                v_txn_group := NEW_GUID();
+
+                BEGIN
+                    SELECT WALLET_PATH, WALLET_PASSWORD
+                    INTO   v_wallet_path, v_wallet_pwd
+                    FROM   CRM_MPM_API_CREDENTIALS
+                    WHERE  CRED_CODE = rec.CRED_CODE;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN
+                        v_wallet_path := NULL;
+                        v_wallet_pwd  := NULL;
+                END;
+
+                SEND_PAYLOAD_TO_APIC(
+                    p_endpoint    => rec.APIC_ENDPOINT_URL,
+                    p_http_method => rec.HTTP_METHOD,
+                    p_token       => v_token,
+                    p_wallet_path => v_wallet_path,
+                    p_wallet_pwd  => v_wallet_pwd,
+                    p_txn_group   => v_txn_group,
+                    p_unique_id   => v_unique_id,
+                    p_rec_type    => rec.RECORD_TYPE_HDR,
+                    p_rec_action  => rec.EVENT_CODE_HDR,
+                    p_api_version => rec.APIC_API_VERSION,
+                    p_payload     => rec.JSON_PAYLOAD,
+                    p_status_code => v_status_code,
+                    p_response    => v_response
+                );
+
+                IF v_status_code BETWEEN '200' AND '299' THEN
+                    v_request_id := JSON_VALUE(v_response, '$.request_id');
+                    IF v_request_id IS NULL THEN
+                        v_request_id := JSON_VALUE(v_response, '$.requestid');
+                    END IF;
+                END IF;
+
+                UPDATE CRM_MPM_OUTBOUND_STAGING
+                SET STATUS           = CASE WHEN v_status_code BETWEEN '200' AND '299'
+                                           THEN 'SENT' ELSE 'FAILED' END,
+                    HTTP_STATUS_CODE = v_status_code,
+                    REQUEST_ID       = v_request_id,
+					X_UNIQUE_ID = v_unique_id,
+                    SENT_DATE        = SYSDATE,
+                    LAST_UPDATED     = SYSDATE,
+                    ERROR_MESSAGE    = CASE WHEN v_status_code NOT BETWEEN '200' AND '299'
+                                           THEN DBMS_LOB.SUBSTR(v_response, 4000, 1)
+                                           ELSE NULL END
+                WHERE STAGING_ID = rec.STAGING_ID;
+                COMMIT;
+
+            EXCEPTION
+                WHEN OTHERS THEN
+                    v_err_msg := SQLERRM;
+                    ROLLBACK;
+                    UPDATE CRM_MPM_OUTBOUND_STAGING
+                    SET STATUS        = 'FAILED',
+                        ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000),
+                        LAST_UPDATED  = SYSDATE
+                    WHERE STAGING_ID  = rec.STAGING_ID;
+                    COMMIT;
+            END;
+        END LOOP;
+    EXCEPTION
+        WHEN OTHERS THEN NULL; -- job must never crash scheduler
+    END RUN_STAGING_JOB;
+
+
+    /* ====================================================================
+       PROCESS_STAGING_CALLBACK
+       ESB calls this for LEG 2 on staging-submitted records
+       ==================================================================== */
+    PROCEDURE PROCESS_STAGING_CALLBACK(
+        p_request_id        IN  VARCHAR2,
+        p_crm_reference     IN  VARCHAR2,
+        p_callback_status   IN  VARCHAR2,
+        p_status_out        OUT VARCHAR2
+    ) IS
+        v_staging_id NUMBER;
+    BEGIN
+        SELECT STAGING_ID INTO v_staging_id
+        FROM   CRM_MPM_OUTBOUND_STAGING
+        WHERE  REQUEST_ID = p_request_id
+        AND    ROWNUM     = 1;
+
+        UPDATE CRM_MPM_OUTBOUND_STAGING
+        SET    STATUS             = 'COMPLETED',
+               CRM_REFERENCE     = p_crm_reference,
+               CALLBACK_STATUS   = p_callback_status,
+               CALLBACK_RECEIVED = SYSDATE,
+               LAST_UPDATED      = SYSDATE
+        WHERE  STAGING_ID = v_staging_id;
+        COMMIT;
+
+        p_status_out := 'SUCCESS';
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_status_out := 'ERROR: No staging record found for request_id=' || p_request_id;
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_status_out := 'ERROR: ' || SQLERRM;
+    END PROCESS_STAGING_CALLBACK;
+
+     /* ====================================================================
+       RUN_UNIT_UNAVAILABLE_BATCH
+       Batch running
+       ==================================================================== */
+
+    PROCEDURE RUN_UNIT_UNAVAILABLE_BATCH IS 
+        v_reg            CRM_MPM_API_REGISTRY%ROWTYPE;
+        v_token          VARCHAR2(4000);
+        v_wallet_path    VARCHAR2(200);
+        v_wallet_pwd     VARCHAR2(200);
+        v_batch_size     NUMBER;
+        v_err_msg        VARCHAR2(4000);
+        v_cursor_id      INTEGER;
+        v_sql            VARCHAR2(500);
+        v_rec_count      NUMBER := 0;
+        v_total          NUMBER;
+        v_start          NUMBER;
+        v_end            NUMBER;
+        v_batch_num      NUMBER;
+
+        -- Record type to hold all 3 columns
+        TYPE t_unit_rec IS RECORD (
+            unit_code     VARCHAR2(200),
+            customer_id   VARCHAR2(200),
+            customer_name VARCHAR2(500)
+        );
+        TYPE t_unit_tab IS TABLE OF t_unit_rec INDEX BY PLS_INTEGER;
+        v_units       t_unit_tab;
+        v_unit_code   VARCHAR2(200);
+        v_cust_id     VARCHAR2(200);
+        v_cust_name   VARCHAR2(500);
+
+        -- Send one batch
+        PROCEDURE SEND_BATCH(
+            p_batch_num IN NUMBER,
+            p_start     IN NUMBER,
+            p_end       IN NUMBER
+        ) IS
+            v_batch_payload  CLOB;
+            v_batch_status   VARCHAR2(10);
+            v_batch_response CLOB;
+            v_batch_unique   VARCHAR2(60);
+            v_batch_txn      VARCHAR2(40);
+            v_batch_log_id   NUMBER;
+            v_batch_req_id   VARCHAR2(200);
+            v_batch_id_str   VARCHAR2(100);
+            v_unit_json      VARCHAR2(1000);
+        BEGIN
+            v_batch_id_str := 'UNAVAIL_BATCH_' ||
+                              TO_CHAR(SYSDATE,'YYYYMMDD_HH24MI') ||
+                              '_' || LPAD(TO_CHAR(p_batch_num),3,'0');
+            v_batch_unique  := GENERATE_UNIQUE_ID();
+            v_batch_txn     := NEW_GUID();
+
+            -- Build JSON array for this batch
+            DBMS_LOB.CREATETEMPORARY(v_batch_payload, TRUE);
+            DBMS_LOB.WRITEAPPEND(v_batch_payload, 1, '[');
+
+            FOR i IN p_start..p_end LOOP
+                IF i > p_start THEN
+                    DBMS_LOB.WRITEAPPEND(v_batch_payload, 1, ',');
+                END IF;
+
+                -- Build nested JSON with tenantaccount object
+                v_unit_json :=
+                    '{"unitid":"'         || NVL(v_units(i).unit_code,'')   || '"'  ||
+                    ',"tenantaccount":{'  ||
+                    '"tenantaccount_id":"'|| NVL(v_units(i).customer_id,'') || '"'  ||
+                    ',"tenantaccount_name":"' ||
+                        REPLACE(NVL(v_units(i).customer_name,''),'"','\"')   || '"'  ||
+                    '}}';
+
+                DBMS_LOB.WRITEAPPEND(v_batch_payload,
+                                     LENGTH(v_unit_json), v_unit_json);
+            END LOOP;
+
+            DBMS_LOB.WRITEAPPEND(v_batch_payload, 1, ']');
+
+            -- Insert log record
+            INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+                SOURCE_RECORD_ID, TRANSACTION_GROUP_ID,
+                ATTEMPT_NO, REQUEST_PAYLOAD,
+                SENT_DATE, FINAL_STATUS, X_UNIQUE_ID
+            ) VALUES (
+                v_reg.REGISTRY_ID, v_reg.ENTITY_NAME, v_reg.OPERATION_TYPE,
+                v_batch_id_str, v_batch_txn,
+                1, v_batch_payload,
+                SYSTIMESTAMP, 'PENDING', v_batch_unique
+            ) RETURNING LOG_ID INTO v_batch_log_id;
+            COMMIT;
+
+            -- Send to APIC
+            SEND_PAYLOAD_TO_APIC(
+                p_endpoint    => v_reg.APIC_ENDPOINT_URL,
+                p_http_method => v_reg.HTTP_METHOD,
+                p_token       => v_token,
+                p_wallet_path => v_wallet_path,
+                p_wallet_pwd  => v_wallet_pwd,
+                p_txn_group   => v_batch_txn,
+                p_unique_id   => v_batch_unique,
+                p_rec_type    => v_reg.RECORD_TYPE_HDR,
+                p_rec_action  => v_reg.EVENT_CODE_HDR,
+                p_api_version => v_reg.APIC_API_VERSION,
+                p_payload     => v_batch_payload,
+                p_status_code => v_batch_status,
+                p_response    => v_batch_response
+            );
+
+            -- Parse request_id
+            IF v_batch_status BETWEEN '200' AND '299' THEN
+                v_batch_req_id := JSON_VALUE(v_batch_response, '$.request_id');
+                IF v_batch_req_id IS NULL THEN
+                    v_batch_req_id := JSON_VALUE(v_batch_response, '$.requestid');
+                END IF;
+            END IF;
+
+            -- Update log
+            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+            SET HTTP_STATUS_CODE = v_batch_status,
+                ACK_RESPONSE     = v_batch_response,
+                ACK_REQUEST_ID   = v_batch_req_id,
+                FINAL_STATUS     = CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                                        THEN 'SENT' ELSE 'FAILED' END,
+                ERROR_CODE       = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN 'APIC_ERROR' ELSE NULL END,
+                ERROR_MESSAGE    = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN DBMS_LOB.SUBSTR(v_batch_response,4000,1)
+                                        ELSE NULL END,
+                UPDATED_DATE     = SYSTIMESTAMP
+            WHERE LOG_ID = v_batch_log_id;
+            COMMIT;
+
+            DBMS_LOB.FREETEMPORARY(v_batch_payload);
+
+            DBMS_OUTPUT.PUT_LINE(
+                'Batch ' || p_batch_num ||
+                ' (' || (p_end - p_start + 1) || ' units): ' ||
+                CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                     THEN 'SENT OK'
+                     ELSE 'FAILED HTTP ' || v_batch_status END
+            );
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_err_msg := SQLERRM;
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET FINAL_STATUS  = 'FAILED',
+                    ERROR_CODE    = 'UNKNOWN_ERROR',
+                    ERROR_MESSAGE = SUBSTR(v_err_msg,1,4000),
+                    UPDATED_DATE  = SYSTIMESTAMP
+                WHERE LOG_ID = v_batch_log_id;
+                COMMIT;
+                DBMS_OUTPUT.PUT_LINE('Batch ' || p_batch_num ||
+                                     ' ERROR: ' || v_err_msg);
+        END SEND_BATCH;
+
+    BEGIN
+        -- Get registry
+        SELECT * INTO v_reg
+        FROM CRM_MPM_API_REGISTRY
+        WHERE SERVICE_NAME = 'MD_UNIT_UNAVAILABLE_UPDATE'
+        AND   IS_ACTIVE    = 'Y';
+
+        v_batch_size := NVL(v_reg.BATCH_SIZE, 50);
+
+        -- Get token once
+        v_token := GET_BEARER_TOKEN(v_reg.CRED_CODE);
+
+        -- Get wallet once
+        BEGIN
+            SELECT WALLET_PATH, WALLET_PASSWORD
+            INTO   v_wallet_path, v_wallet_pwd
+            FROM   CRM_MPM_API_CREDENTIALS
+            WHERE  CRED_CODE = v_reg.CRED_CODE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_wallet_path := NULL;
+                v_wallet_pwd  := NULL;
+        END;
+
+        -- Load all records into collection
+        v_sql := 'SELECT UNIT_CODE, CUSTOMER_ID, CUSTOMER_NAME ' ||
+                 'FROM XXMPM_CRM_LEASED_UNIT_TENANTS ' ||
+                 'ORDER BY UNIT_CODE';
+
+        v_cursor_id := DBMS_SQL.OPEN_CURSOR;
+        DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_unit_code,   200);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 2, v_cust_id,     200);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 3, v_cust_name,   500);
+        DECLARE v_exec INTEGER; BEGIN v_exec := DBMS_SQL.EXECUTE(v_cursor_id); END;
+
+        LOOP
+            EXIT WHEN DBMS_SQL.FETCH_ROWS(v_cursor_id) = 0;
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 1, v_unit_code);
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 2, v_cust_id);
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 3, v_cust_name);
+            v_rec_count := v_rec_count + 1;
+            v_units(v_rec_count).unit_code     := v_unit_code;
+            v_units(v_rec_count).customer_id   := v_cust_id;
+            v_units(v_rec_count).customer_name := v_cust_name;
+        END LOOP;
+        DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+
+        v_total := v_rec_count;
+        DBMS_OUTPUT.PUT_LINE(
+            'Total unavailable units: ' || v_total ||
+            ' | Batch size: '           || v_batch_size ||
+            ' | Batches: '              || CEIL(v_total / v_batch_size)
+        );
+
+        -- Send in batches
+        v_batch_num := 1;
+        v_start     := 1;
+
+        WHILE v_start <= v_total LOOP
+            v_end       := LEAST(v_start + v_batch_size - 1, v_total);
+            SEND_BATCH(v_batch_num, v_start, v_end);
+            v_batch_num := v_batch_num + 1;
+            v_start     := v_end + 1;
+        END LOOP;
+
+        DBMS_OUTPUT.PUT_LINE('All batches completed. Total: ' || v_total);
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_err_msg := SQLERRM;
+            IF DBMS_SQL.IS_OPEN(v_cursor_id) THEN
+                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+            END IF;
+            DBMS_OUTPUT.PUT_LINE('RUN_UNIT_UNAVAILABLE_BATCH ERROR: ' || v_err_msg);
+    END RUN_UNIT_UNAVAILABLE_BATCH;
+
+    -- =============================================================================
+-- PACKAGE BODY -- RUN_UNIT_STATUS_BATCH
+-- procedure to PKG_CRM_INTEGRATION body
+-- =============================================================================
+
+    PROCEDURE RUN_UNIT_STATUS_BATCH IS
+        v_reg            CRM_MPM_API_REGISTRY%ROWTYPE;
+        v_token          VARCHAR2(4000);
+        v_unique_id      VARCHAR2(60);
+        v_txn_group      VARCHAR2(40);
+        v_wallet_path    VARCHAR2(200);
+        v_wallet_pwd     VARCHAR2(200);
+        v_status_code    VARCHAR2(10);
+        v_response       CLOB;
+        v_payload        CLOB;
+        v_batch_id       VARCHAR2(50);
+        v_log_id         NUMBER;
+        v_unit_id        VARCHAR2(200);
+        v_batch_size     NUMBER;
+        v_batch_num      NUMBER := 1;
+        v_rec_count      NUMBER := 0;
+        v_first          BOOLEAN := TRUE;
+        v_err_msg        VARCHAR2(4000);
+        v_ack_request_id VARCHAR2(200);
+
+        -- Collect all unit IDs into array first
+        TYPE t_unit_tab IS TABLE OF VARCHAR2(200) INDEX BY PLS_INTEGER;
+        v_units     t_unit_tab;
+        v_cursor_id INTEGER;
+        v_sql       VARCHAR2(500);
+        v_total     NUMBER;
+        v_start     NUMBER;
+        v_end       NUMBER;
+
+        -- Send one batch of units to APIC
+        PROCEDURE SEND_BATCH(
+            p_batch_num  IN NUMBER,
+            p_start      IN NUMBER,
+            p_end        IN NUMBER
+        ) IS
+            v_batch_payload  CLOB;
+            v_batch_status   VARCHAR2(10);
+            v_batch_response CLOB;
+            v_batch_unique   VARCHAR2(60);
+            v_batch_txn      VARCHAR2(40);
+            v_batch_log_id   NUMBER;
+            v_batch_req_id   VARCHAR2(200);
+            v_batch_id_str   VARCHAR2(100);
+        BEGIN
+            v_batch_id_str := 'BATCH_' || TO_CHAR(SYSDATE,'YYYYMMDD_HH24MI') ||
+                              '_' || LPAD(TO_CHAR(p_batch_num), 3, '0');
+            v_batch_unique  := GENERATE_UNIQUE_ID();
+            v_batch_txn     := NEW_GUID();
+
+            -- Build JSON array for this batch
+            DBMS_LOB.CREATETEMPORARY(v_batch_payload, TRUE);
+            DBMS_LOB.WRITEAPPEND(v_batch_payload, LENGTH('{"units":['), '{"units":[');
+
+            FOR i IN p_start..p_end LOOP
+                IF i > p_start THEN
+                    DBMS_LOB.WRITEAPPEND(v_batch_payload, 1, ',');
+                END IF;
+                DECLARE
+                    v_unit_json VARCHAR2(300);
+                BEGIN
+                    v_unit_json := '{"unit_id":"' || v_units(i) ||
+                                   '","status":"Available"}';
+                    DBMS_LOB.WRITEAPPEND(v_batch_payload,
+                                         LENGTH(v_unit_json), v_unit_json);
+                END;
+            END LOOP;
+
+            DBMS_LOB.WRITEAPPEND(v_batch_payload, LENGTH(']}'), ']}');
+
+            -- Insert log record for this batch
+            INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+                SOURCE_RECORD_ID, TRANSACTION_GROUP_ID,
+                ATTEMPT_NO, REQUEST_PAYLOAD,
+                SENT_DATE, FINAL_STATUS, X_UNIQUE_ID
+            ) VALUES (
+                v_reg.REGISTRY_ID, v_reg.ENTITY_NAME, v_reg.OPERATION_TYPE,
+                v_batch_id_str, v_batch_txn,
+                1, v_batch_payload,
+                SYSTIMESTAMP, 'PENDING', v_batch_unique
+            ) RETURNING LOG_ID INTO v_batch_log_id;
+            COMMIT;
+
+            -- Send to APIC
+            SEND_PAYLOAD_TO_APIC(
+                p_endpoint    => v_reg.APIC_ENDPOINT_URL,
+                p_http_method => v_reg.HTTP_METHOD,
+                p_token       => v_token,
+                p_wallet_path => v_wallet_path,
+                p_wallet_pwd  => v_wallet_pwd,
+                p_txn_group   => v_batch_txn,
+                p_unique_id   => v_batch_unique,
+                p_rec_type    => v_reg.RECORD_TYPE_HDR,
+                p_rec_action  => v_reg.EVENT_CODE_HDR,
+                p_api_version => v_reg.APIC_API_VERSION,
+                p_payload     => v_batch_payload,
+                p_status_code => v_batch_status,
+                p_response    => v_batch_response
+            );
+
+            -- Parse request_id
+            IF v_batch_status BETWEEN '200' AND '299' THEN
+                v_batch_req_id := JSON_VALUE(v_batch_response, '$.request_id');
+                IF v_batch_req_id IS NULL THEN
+                    v_batch_req_id := JSON_VALUE(v_batch_response, '$.requestid');
+                END IF;
+            END IF;
+
+            -- Update log
+            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+            SET HTTP_STATUS_CODE = v_batch_status,
+                ACK_RESPONSE     = v_batch_response,
+                ACK_REQUEST_ID   = v_batch_req_id,
+                FINAL_STATUS     = CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                                        THEN 'SENT' ELSE 'FAILED' END,
+                ERROR_CODE       = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN 'APIC_ERROR' ELSE NULL END,
+                ERROR_MESSAGE    = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN DBMS_LOB.SUBSTR(v_batch_response, 4000, 1)
+                                        ELSE NULL END,
+                UPDATED_DATE     = SYSTIMESTAMP
+            WHERE LOG_ID = v_batch_log_id;
+            COMMIT;
+
+            DBMS_LOB.FREETEMPORARY(v_batch_payload);
+
+            DBMS_OUTPUT.PUT_LINE(
+                'Batch ' || p_batch_num ||
+                ' (' || (p_end - p_start + 1) || ' units): ' ||
+                CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                     THEN 'SENT OK' ELSE 'FAILED HTTP ' || v_batch_status END
+            );
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_err_msg := SQLERRM;
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET FINAL_STATUS  = 'FAILED',
+                    ERROR_CODE    = 'UNKNOWN_ERROR',
+                    ERROR_MESSAGE = SUBSTR(v_err_msg, 1, 4000),
+                    UPDATED_DATE  = SYSTIMESTAMP
+                WHERE LOG_ID = v_batch_log_id;
+                COMMIT;
+                DBMS_OUTPUT.PUT_LINE('Batch ' || p_batch_num || ' ERROR: ' || v_err_msg);
+        END SEND_BATCH;
+
+    BEGIN
+        -- Get registry
+        SELECT * INTO v_reg
+        FROM CRM_MPM_API_REGISTRY
+        WHERE SERVICE_NAME = 'MD_UNIT_STATUS_UPDATE'
+        AND   IS_ACTIVE    = 'Y';
+
+        -- Get configurable batch size from registry
+        v_batch_size := NVL(v_reg.BATCH_SIZE, 50);
+
+        -- Get token once for all batches
+        v_token := GET_BEARER_TOKEN(v_reg.CRED_CODE);
+
+        -- Get wallet once
+        BEGIN
+            SELECT WALLET_PATH, WALLET_PASSWORD
+            INTO   v_wallet_path, v_wallet_pwd
+            FROM   CRM_MPM_API_CREDENTIALS
+            WHERE  CRED_CODE = v_reg.CRED_CODE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_wallet_path := NULL;
+                v_wallet_pwd  := NULL;
+        END;
+
+        -- Load ALL unit IDs into collection
+        v_sql := 'SELECT UNIT_ID FROM XXMPM_CRM_UNIT_STATUS_UPDATE_V ORDER BY UNIT_ID';
+        v_cursor_id := DBMS_SQL.OPEN_CURSOR;
+        DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_unit_id, 200);
+        DECLARE v_exec INTEGER; BEGIN v_exec := DBMS_SQL.EXECUTE(v_cursor_id); END;
+
+        LOOP
+            EXIT WHEN DBMS_SQL.FETCH_ROWS(v_cursor_id) = 0;
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 1, v_unit_id);
+            v_rec_count := v_rec_count + 1;
+            v_units(v_rec_count) := v_unit_id;
+        END LOOP;
+        DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+
+        v_total := v_rec_count;
+        DBMS_OUTPUT.PUT_LINE('Total units: ' || v_total ||
+                             ' | Batch size: ' || v_batch_size ||
+                             ' | Batches: ' ||
+                             CEIL(v_total / v_batch_size));
+
+        -- Send in batches
+        v_batch_num := 1;
+        v_start     := 1;
+
+        WHILE v_start <= v_total LOOP
+            v_end := LEAST(v_start + v_batch_size - 1, v_total);
+            SEND_BATCH(v_batch_num, v_start, v_end);
+            v_batch_num := v_batch_num + 1;
+            v_start     := v_end + 1;
+        END LOOP;
+
+        DBMS_OUTPUT.PUT_LINE('All batches completed. Total sent: ' || v_total);
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_err_msg := SQLERRM;
+            IF DBMS_SQL.IS_OPEN(v_cursor_id) THEN
+                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+            END IF;
+            DBMS_OUTPUT.PUT_LINE('RUN_UNIT_STATUS_BATCH ERROR: ' || v_err_msg);
+    END RUN_UNIT_STATUS_BATCH;
+
+    PROCEDURE RUN_UNIT_UNAVAILABLE_AVAILABLE_BATCH IS
+        v_reg            CRM_MPM_API_REGISTRY%ROWTYPE;
+        v_token          VARCHAR2(4000);
+        v_wallet_path    VARCHAR2(200);
+        v_wallet_pwd     VARCHAR2(200);
+        v_batch_size     NUMBER;
+        v_err_msg        VARCHAR2(4000);
+        v_cursor_id      INTEGER;
+        v_sql            VARCHAR2(500);
+        v_rec_count      NUMBER := 0;
+        v_total          NUMBER;
+        v_start          NUMBER;
+        v_end            NUMBER;
+        v_batch_num      NUMBER;
+
+        -- Record type for all 4 columns
+        TYPE t_unit_rec IS RECORD (
+            unit_id      VARCHAR2(200),
+            unit_status  VARCHAR2(50),
+            customertype VARCHAR2(200),
+            tenantid     VARCHAR2(200)
+        );
+        TYPE t_unit_tab IS TABLE OF t_unit_rec INDEX BY PLS_INTEGER;
+        v_units       t_unit_tab;
+        v_unit_id     VARCHAR2(200);
+        v_unit_status VARCHAR2(50);
+        v_cust_type   VARCHAR2(200);
+        v_tenant_id   VARCHAR2(200);
+
+        -- Send one batch
+        PROCEDURE SEND_BATCH(
+            p_batch_num IN NUMBER,
+            p_start     IN NUMBER,
+            p_end       IN NUMBER
+        ) IS
+            v_batch_payload  CLOB;
+            v_batch_status   VARCHAR2(10);
+            v_batch_response CLOB;
+            v_batch_unique   VARCHAR2(60);
+            v_batch_txn      VARCHAR2(40);
+            v_batch_log_id   NUMBER;
+            v_batch_req_id   VARCHAR2(200);
+            v_batch_id_str   VARCHAR2(100);
+            v_unit_json      VARCHAR2(1000);
+        BEGIN
+            v_batch_id_str := 'UNIT_BATCH_' ||
+                              TO_CHAR(SYSDATE,'YYYYMMDD_HH24MI') ||
+                              '_' || LPAD(TO_CHAR(p_batch_num),3,'0');
+            v_batch_unique  := GENERATE_UNIQUE_ID();
+            v_batch_txn     := NEW_GUID();
+
+            -- Build JSON
+            DBMS_LOB.CREATETEMPORARY(v_batch_payload, TRUE);
+            DBMS_LOB.WRITEAPPEND(v_batch_payload,
+                                 LENGTH('{"units":['), '{"units":[');
+
+            FOR i IN p_start..p_end LOOP
+                IF i > p_start THEN
+                    DBMS_LOB.WRITEAPPEND(v_batch_payload, 1, ',');
+                END IF;
+
+                v_unit_json :=
+                    '{"unit_id":"'     || NVL(v_units(i).unit_id,'')      || '"' ||
+                    ',"unit_status":"' || NVL(v_units(i).unit_status,'')  || '"' ||
+                    ',"customertype":"'|| NVL(v_units(i).customertype,'') || '"' ||
+                    ',"tenantid":"'    || NVL(v_units(i).tenantid,'')     || '"' ||
+                    '}';
+
+                DBMS_LOB.WRITEAPPEND(v_batch_payload,
+                                     LENGTH(v_unit_json), v_unit_json);
+            END LOOP;
+
+            DBMS_LOB.WRITEAPPEND(v_batch_payload, LENGTH(']}'), ']}');
+
+            -- Insert log
+            INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+                SOURCE_RECORD_ID, TRANSACTION_GROUP_ID,
+                ATTEMPT_NO, REQUEST_PAYLOAD,
+                SENT_DATE, FINAL_STATUS, X_UNIQUE_ID
+            ) VALUES (
+                v_reg.REGISTRY_ID, v_reg.ENTITY_NAME, v_reg.OPERATION_TYPE,
+                v_batch_id_str, v_batch_txn,
+                1, v_batch_payload,
+                SYSTIMESTAMP, 'PENDING', v_batch_unique
+            ) RETURNING LOG_ID INTO v_batch_log_id;
+            COMMIT;
+
+            -- Send to APIC
+            SEND_PAYLOAD_TO_APIC(
+                p_endpoint    => v_reg.APIC_ENDPOINT_URL,
+                p_http_method => v_reg.HTTP_METHOD,
+                p_token       => v_token,
+                p_wallet_path => v_wallet_path,
+                p_wallet_pwd  => v_wallet_pwd,
+                p_txn_group   => v_batch_txn,
+                p_unique_id   => v_batch_unique,
+                p_rec_type    => v_reg.RECORD_TYPE_HDR,
+                p_rec_action  => v_reg.EVENT_CODE_HDR,
+                p_api_version => v_reg.APIC_API_VERSION,
+                p_payload     => v_batch_payload,
+                p_status_code => v_batch_status,
+                p_response    => v_batch_response
+            );
+
+            -- Parse request_id
+            IF v_batch_status BETWEEN '200' AND '299' THEN
+                v_batch_req_id := JSON_VALUE(v_batch_response, '$.request_id');
+                IF v_batch_req_id IS NULL THEN
+                    v_batch_req_id := JSON_VALUE(v_batch_response, '$.requestid');
+                END IF;
+            END IF;
+
+            -- Update log
+            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+            SET HTTP_STATUS_CODE = v_batch_status,
+                ACK_RESPONSE     = v_batch_response,
+                ACK_REQUEST_ID   = v_batch_req_id,
+                FINAL_STATUS     = CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                                        THEN 'SENT' ELSE 'FAILED' END,
+                ERROR_CODE       = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN 'APIC_ERROR' ELSE NULL END,
+                ERROR_MESSAGE    = CASE WHEN v_batch_status NOT BETWEEN '200' AND '299'
+                                        THEN DBMS_LOB.SUBSTR(v_batch_response,4000,1)
+                                        ELSE NULL END,
+                UPDATED_DATE     = SYSTIMESTAMP
+            WHERE LOG_ID = v_batch_log_id;
+            COMMIT;
+
+            DBMS_LOB.FREETEMPORARY(v_batch_payload);
+
+            DBMS_OUTPUT.PUT_LINE(
+                'Batch ' || p_batch_num ||
+                ' (' || (p_end - p_start + 1) || ' units): ' ||
+                CASE WHEN v_batch_status BETWEEN '200' AND '299'
+                     THEN 'SENT OK'
+                     ELSE 'FAILED HTTP ' || v_batch_status END
+            );
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_err_msg := SQLERRM;
+                UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                SET FINAL_STATUS  = 'FAILED',
+                    ERROR_CODE    = 'UNKNOWN_ERROR',
+                    ERROR_MESSAGE = SUBSTR(v_err_msg,1,4000),
+                    UPDATED_DATE  = SYSTIMESTAMP
+                WHERE LOG_ID = v_batch_log_id;
+                COMMIT;
+                DBMS_OUTPUT.PUT_LINE('Batch ' || p_batch_num ||
+                                     ' ERROR: ' || v_err_msg);
+        END SEND_BATCH;
+
+    BEGIN
+        -- Get registry
+        SELECT * INTO v_reg
+        FROM CRM_MPM_API_REGISTRY
+        WHERE SERVICE_NAME = 'MD_UNIT_ALL_STATUS'
+        AND   IS_ACTIVE    = 'Y';
+
+        v_batch_size := NVL(v_reg.BATCH_SIZE, 100);
+
+        -- Get token once
+        v_token := GET_BEARER_TOKEN(v_reg.CRED_CODE);
+
+        -- Get wallet once
+        BEGIN
+            SELECT WALLET_PATH, WALLET_PASSWORD
+            INTO   v_wallet_path, v_wallet_pwd
+            FROM   CRM_MPM_API_CREDENTIALS
+            WHERE  CRED_CODE = v_reg.CRED_CODE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_wallet_path := NULL;
+                v_wallet_pwd  := NULL;
+        END;
+
+        -- Load all records from consolidated view
+        v_sql := 'SELECT UNIT_ID, UNIT_STATUS, CUSTOMERTYPE, TENANTID ' ||
+                 'FROM XXMPM_CRM_ALL_UNIT_STATUS_V ' ||
+                 'ORDER BY UNIT_STATUS, UNIT_ID';
+
+        v_cursor_id := DBMS_SQL.OPEN_CURSOR;
+        DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_unit_id,     200);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 2, v_unit_status, 50);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 3, v_cust_type,   200);
+        DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 4, v_tenant_id,   200);
+        DECLARE v_exec INTEGER; BEGIN v_exec := DBMS_SQL.EXECUTE(v_cursor_id); END;
+
+        LOOP
+            EXIT WHEN DBMS_SQL.FETCH_ROWS(v_cursor_id) = 0;
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 1, v_unit_id);
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 2, v_unit_status);
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 3, v_cust_type);
+            DBMS_SQL.COLUMN_VALUE(v_cursor_id, 4, v_tenant_id);
+            v_rec_count := v_rec_count + 1;
+            v_units(v_rec_count).unit_id      := v_unit_id;
+            v_units(v_rec_count).unit_status  := v_unit_status;
+            v_units(v_rec_count).customertype := v_cust_type;
+            v_units(v_rec_count).tenantid     := v_tenant_id;
+        END LOOP;
+        DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+
+        v_total := v_rec_count;
+        DBMS_OUTPUT.PUT_LINE(
+            'Total units: '   || v_total       ||
+            ' | Batch size: ' || v_batch_size  ||
+            ' | Batches: '    || CEIL(v_total / v_batch_size)
+        );
+
+        -- Send in batches
+        v_batch_num := 1;
+        v_start     := 1;
+
+        WHILE v_start <= v_total LOOP
+            v_end       := LEAST(v_start + v_batch_size - 1, v_total);
+            SEND_BATCH(v_batch_num, v_start, v_end);
+            v_batch_num := v_batch_num + 1;
+            v_start     := v_end + 1;
+        END LOOP;
+
+        DBMS_OUTPUT.PUT_LINE('All batches completed. Total: ' || v_total);
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_err_msg := SQLERRM;
+            IF DBMS_SQL.IS_OPEN(v_cursor_id) THEN
+                DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+            END IF;
+            DBMS_OUTPUT.PUT_LINE('RUN_UNIT_UNAVAILABLE_BATCH ERROR: ' || v_err_msg);
+    END RUN_UNIT_UNAVAILABLE_AVAILABLE_BATCH;
+
+
+
 END PKG_CRM_INTEGRATION;
-/
