@@ -1,0 +1,11 @@
+STEP 1: Create the wallet with password
+-----------------------------------------------------------------------
+orapki wallet create -wallet /data/SIH/19.22.0/apiwallet/  -pwd xxxxxxx -auto_login
+ 
+STEP 2 :Add Certificate to Wallet 
+-----------------------------------------------------------------------
+orapki wallet add -wallet /data/SIH/19.22.0/apiwallet -trusted_cert -cert "apisitgatewaylb.p7b" -pwd xxxxxxx
+ 
+STEP 3: Verify wallet created and certificate imported 
+-----------------------------------------------------------------------
+orapki wallet display -wallet  data/PROD/19.0.0/apiwallet -pwd sitpasswd123
