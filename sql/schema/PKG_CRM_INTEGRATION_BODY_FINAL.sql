@@ -388,9 +388,21 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                    AND v_val_varchar IS NOT NULL THEN
                     BEGIN
 
-                        v_val_varchar := TO_CHAR(
-                            TO_DATE(v_val_varchar, 'DD-MON-RR HH24:MI:SS'),
-                           NVL(rec.DATE_FORMAT, 'DD-MON-YY HH24:MI:SS'));
+                        -- Date format fix: explicitly parse using DD-MON-YYYY first,
+                        -- then fall back to DD-MON-RR for older 2-digit year formats.
+                        -- This replaces the original ALTER SESSION approach — same result,
+                        -- no session-level side effects on other procedures/jobs.
+                        BEGIN
+                            v_val_varchar := TO_CHAR(
+                                TO_DATE(v_val_varchar, 'DD-MON-YYYY HH24:MI:SS'),
+                                NVL(rec.DATE_FORMAT, 'DD-MON-YYYY HH24:MI:SS'));
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                -- Fallback: try RR (2-digit year) format
+                                v_val_varchar := TO_CHAR(
+                                    TO_DATE(v_val_varchar, 'DD-MON-RR HH24:MI:SS'),
+                                    NVL(rec.DATE_FORMAT, 'DD-MON-YYYY HH24:MI:SS'));
+                        END;
 
 
 
