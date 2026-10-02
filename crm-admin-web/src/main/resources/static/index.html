@@ -8,14 +8,15 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; font-size: 13px; background: #1e2a38; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
 #header { background: #0d1b2a; padding: 8px 16px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #2980b9; }
-#header h1 { font-size: 15px; color: #2980b9; font-weight: bold; }
+#header h1 { font-size: 15px; color: #2980b9; font-weight: bold; flex:1; }
+#userInfo { font-size: 12px; color: #aaa; }
 #dbStatus { font-size: 12px; color: #888; }
-#dbStatus.ok { color: #27ae60; }
-#dbStatus.err { color: #e74c3c; }
+#dbStatus.ok { color: #27ae60; } #dbStatus.err { color: #e74c3c; }
 #tabBar { display: flex; background: #162030; border-bottom: 1px solid #2c3e50; overflow-x: auto; flex-shrink: 0; }
 .tab-btn { padding: 8px 14px; border: none; background: none; color: #888; cursor: pointer; font-size: 12px; white-space: nowrap; border-bottom: 3px solid transparent; }
 .tab-btn:hover { color: #ccc; background: #1a2840; }
 .tab-btn.active { color: #2980b9; border-bottom-color: #2980b9; background: #1a2840; }
+.tab-btn.admin-only { border-left: 2px solid #e67e22; }
 #statusBar { background: #0d1b2a; padding: 4px 12px; font-size: 12px; color: #888; border-top: 1px solid #2c3e50; flex-shrink: 0; }
 #statusBar.ok { color: #27ae60; } #statusBar.warn { color: #f39c12; } #statusBar.err { color: #e74c3c; }
 #content { flex: 1; overflow: auto; padding: 12px; }
@@ -33,6 +34,7 @@ button { padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; f
 .btn-orange { background: #e67e22; color: white; } .btn-orange:hover { background: #f39c12; }
 .btn-red { background: #c0392b; color: white; } .btn-red:hover { background: #e74c3c; }
 .btn-grey { background: #5d6d7e; color: white; } .btn-grey:hover { background: #7f8c8d; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { background: #162030; color: #2980b9; padding: 6px 8px; text-align: left; position: sticky; top: 0; white-space: nowrap; }
 td { padding: 5px 8px; border-bottom: 1px solid #1a2840; vertical-align: top; }
@@ -45,13 +47,13 @@ tr.selected td { background: #1a3550; }
 .badge-orange { background: #4a3a1a; color: #f39c12; }
 .badge-blue { background: #1a3050; color: #2980b9; }
 .badge-grey { background: #2c3e50; color: #888; }
-.split { display: grid; grid-template-columns: 360px 1fr; gap: 12px; }
+.badge-purple { background: #3a1a4a; color: #9b59b6; }
+.split { display: grid; grid-template-columns: 380px 1fr; gap: 12px; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .dash-card { background: #1a2840; border-radius: 6px; padding: 10px; text-align: center; border: 1px solid #2c3e50; }
 .dash-card .num { font-size: 28px; font-weight: bold; color: #2980b9; }
 .dash-card .lbl { font-size: 11px; color: #888; margin-top: 4px; }
-.dash-card.warn .num { color: #f39c12; }
-.dash-card.danger .num { color: #e74c3c; }
+.dash-card.warn .num { color: #f39c12; } .dash-card.danger .num { color: #e74c3c; }
 .sub-tabs { display: flex; gap: 2px; margin-bottom: 10px; }
 .sub-tab { padding: 5px 12px; background: #162030; border: 1px solid #2c3e50; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 12px; color: #888; }
 .sub-tab.active { background: #243447; color: #2980b9; border-bottom-color: #243447; }
@@ -59,24 +61,34 @@ tr.selected td { background: #1a3550; }
 .filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .filter-row input, .filter-row select { background: #1a2840; border: 1px solid #2c3e50; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 .filter-row label { font-size: 12px; color: #aaa; }
+.svc-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 160px; overflow-y: auto; padding: 4px; }
+.svc-chip { padding: 3px 10px; background: #1a3050; border: 1px solid #2980b9; border-radius: 12px; font-size: 11px; cursor: pointer; color: #aaa; }
+.svc-chip.assigned { background: #1a4731; border-color: #27ae60; color: #27ae60; }
+.role-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+.role-ADMIN { background: #3a1a4a; color: #9b59b6; }
+.role-VIEWER { background: #1a3050; color: #2980b9; }
+.role-OPERATOR { background: #4a3a1a; color: #f39c12; }
 </style>
 </head>
 <body>
 
 <div id="header">
   <h1>⚙ CRM Integration Admin Tool — ADIB MPM</h1>
+  <span id="userInfo"></span>
   <span id="dbStatus">● Connecting...</span>
+  <a href="/logout" style="color:#e74c3c;font-size:12px;text-decoration:none;">⏻ Logout</a>
 </div>
 
 <div id="tabBar">
-  <button class="tab-btn active" onclick="showTab('credentials')">1. Credentials</button>
-  <button class="tab-btn" onclick="showTab('registry')">2. Service Registry</button>
-  <button class="tab-btn" onclick="showTab('mappings')">3. Field Mappings</button>
-  <button class="tab-btn" onclick="showTab('watermark')">4. Watermark</button>
-  <button class="tab-btn" onclick="showTab('errorcodes')">5. Error Codes</button>
-  <button class="tab-btn" onclick="showTab('monitor')">6. Monitor</button>
-  <button class="tab-btn" onclick="showTab('scheduler')">8. Scheduler</button>
-  <button class="tab-btn" onclick="showTab('health')">9. Health Check</button>
+  <button class="tab-btn active" onclick="showTab('credentials',this)">1. Credentials</button>
+  <button class="tab-btn" onclick="showTab('registry',this)">2. Service Registry</button>
+  <button class="tab-btn" onclick="showTab('mappings',this)">3. Field Mappings</button>
+  <button class="tab-btn" onclick="showTab('watermark',this)">4. Watermark</button>
+  <button class="tab-btn" onclick="showTab('errorcodes',this)">5. Error Codes</button>
+  <button class="tab-btn" onclick="showTab('monitor',this)">6. Monitor</button>
+  <button class="tab-btn" onclick="showTab('scheduler',this)">8. Scheduler</button>
+  <button class="tab-btn" onclick="showTab('health',this)">9. Health Check</button>
+  <button class="tab-btn admin-only" id="tabUsers" onclick="showTab('users',this)" style="display:none">👤 Users</button>
 </div>
 
 <div id="content">
@@ -88,17 +100,15 @@ tr.selected td { background: #1a3550; }
       <h3>Credential Details</h3>
       <div class="form-grid">
         <label>Cred Code *</label><input id="c-credCode" placeholder="APIC_PXRM">
-        <label>Token URL *</label><input id="c-tokenUrl" placeholder="https://...">
+        <label>Token URL *</label><input id="c-tokenUrl">
         <label>Client ID *</label><input id="c-clientId">
         <label>Client Secret *</label><input id="c-secret" type="password">
         <label>Scope</label><input id="c-scope">
         <label>Grant Type</label><input id="c-grantType" value="client_credentials">
-        <label>Wallet Path</label><input id="c-walletPath" placeholder="file:/path/to/wallet">
+        <label>Wallet Path</label><input id="c-walletPath">
         <label>Wallet Password</label><input id="c-walletPwd" type="password">
-        <label>Is Active</label>
-        <select id="c-isActive"><option value="Y">Y</option><option value="N">N</option></select>
+        <label>Is Active</label><select id="c-isActive"><option value="Y">Y</option><option value="N">N</option></select>
       </div>
-      <small style="color:#888;font-size:11px;">Client Secret encrypted via AES-256 on save</small>
       <div class="btn-row">
         <button class="btn-blue" onclick="credSave()">💾 Save &amp; Encrypt</button>
         <button class="btn-grey" onclick="credRefresh()">🔄 Refresh</button>
@@ -118,7 +128,7 @@ tr.selected td { background: #1a3550; }
           <tbody></tbody>
         </table>
       </div>
-      <small style="color:#888;">Double-click row to load into form</small>
+      <small style="color:#888;">Double-click row to load</small>
     </div>
   </div>
 </div>
@@ -131,10 +141,8 @@ tr.selected td { background: #1a3550; }
       <div class="form-grid">
         <label>Service Name *</label><input id="r-serviceName">
         <label>Entity Name</label><input id="r-entityName">
-        <label>Operation Type</label>
-        <select id="r-operationType"><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>BATCH</option></select>
-        <label>Source Type</label>
-        <select id="r-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
+        <label>Operation Type</label><select id="r-operationType"><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>BATCH</option></select>
+        <label>Source Type</label><select id="r-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
         <label>Source View</label><input id="r-sourceView">
         <label>Source Proc</label><input id="r-sourceProc">
         <label>Filter Col</label><input id="r-sourceFilterCol">
@@ -143,8 +151,7 @@ tr.selected td { background: #1a3550; }
         <label>Record Type Hdr</label><input id="r-recordTypeHdr">
         <label>Event Code Hdr</label><input id="r-eventCodeHdr">
         <label>APIC Endpoint URL</label><input id="r-apicEndpointUrl">
-        <label>HTTP Method</label>
-        <select id="r-httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option><option>GET</option></select>
+        <label>HTTP Method</label><select id="r-httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option><option>GET</option></select>
         <label>API Version</label><input id="r-apicApiVersion">
         <label>Callback Table</label><input id="r-callbackTargetTable">
         <label>Callback Key Col</label><input id="r-callbackKeyCol">
@@ -191,8 +198,7 @@ tr.selected td { background: #1a3550; }
         <label>Display Order</label><input id="m-displayOrder" type="number" value="1">
         <label>Source Column *</label><input id="m-sourceColumn">
         <label>JSON Path *</label><input id="m-jsonPath">
-        <label>Data Type</label>
-        <select id="m-dataType"><option>VARCHAR</option><option>NUMBER</option><option>DATE</option><option>BOOLEAN</option></select>
+        <label>Data Type</label><select id="m-dataType"><option>VARCHAR</option><option>NUMBER</option><option>DATE</option><option>BOOLEAN</option></select>
         <label>Date Format</label><input id="m-dateFormat" placeholder="DD-MON-YYYY">
         <label>Is Mandatory</label><select id="m-isMandatory"><option value="N">N</option><option value="Y">Y</option></select>
         <label>Is Active</label><select id="m-isActive"><option value="Y">Y</option><option value="N">N</option></select>
@@ -271,14 +277,13 @@ tr.selected td { background: #1a3550; }
 <!-- TAB 6: MONITOR -->
 <div id="tab-monitor" class="tab-panel">
   <div class="sub-tabs">
-    <div class="sub-tab active" onclick="showSubTab('monitor','dashboard')">📊 Dashboard</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','allrecords')">📋 All Records</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','action')">⚠ Action Needed</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','retry')">🔄 Retry Queue</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','triage')">🔍 Error Triage</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','callback')">📥 Callback Audit</div>
+    <div class="sub-tab active" onclick="showSubTab('monitor','dashboard',this)">📊 Dashboard</div>
+    <div class="sub-tab" onclick="showSubTab('monitor','allrecords',this)">📋 All Records</div>
+    <div class="sub-tab" onclick="showSubTab('monitor','action',this)">⚠ Action Needed</div>
+    <div class="sub-tab" onclick="showSubTab('monitor','retry',this)">🔄 Retry Queue</div>
+    <div class="sub-tab" onclick="showSubTab('monitor','triage',this)">🔍 Error Triage</div>
+    <div class="sub-tab" onclick="showSubTab('monitor','callback',this)">📥 Callback Audit</div>
   </div>
-
   <div id="monitor-dashboard" class="sub-panel active">
     <div id="dashCards" class="dash-grid"></div>
     <div class="card">
@@ -286,15 +291,12 @@ tr.selected td { background: #1a3550; }
         <h3>Service Summary</h3>
         <button class="btn-grey" onclick="monDashRefresh()">🔄 Refresh</button>
       </div>
-      <div class="tbl-wrap">
-        <table id="dashTable">
-          <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>Action Needed</th><th>Last Sent</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap"><table id="dashTable">
+        <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>Action Needed</th><th>Last Sent</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
-
   <div id="monitor-allrecords" class="sub-panel">
     <div class="card">
       <div class="filter-row">
@@ -304,65 +306,53 @@ tr.selected td { background: #1a3550; }
         <label>To:</label><input id="f-to" placeholder="31-DEC-24" style="width:100px">
         <label>Record ID:</label><input id="f-recId" style="width:120px">
         <button class="btn-blue" onclick="monRecordsRefresh()">🔍 Search</button>
-        <button class="btn-orange" onclick="monManualRetry()">🔄 Manual Retry</button>
+        <button class="btn-orange" onclick="monManualRetry('recTable')">🔄 Manual Retry</button>
       </div>
-      <div class="tbl-wrap" style="max-height:400px">
-        <table id="recTable">
-          <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Retry</th><th>Manual Retry</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap" style="max-height:400px"><table id="recTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Retry</th><th>Manual Retry</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
-
   <div id="monitor-action" class="sub-panel">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h3>Records Needing Action</h3>
         <div class="btn-row">
           <button class="btn-grey" onclick="monActionRefresh()">🔄 Refresh</button>
-          <button class="btn-orange" onclick="monManualRetryAction()">🔄 Manual Retry Selected</button>
+          <button class="btn-orange" onclick="monManualRetry('actionTable')">🔄 Manual Retry Selected</button>
         </div>
       </div>
-      <div class="tbl-wrap" style="max-height:400px">
-        <table id="actionTable">
-          <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Retry</th><th>Action Needed</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap" style="max-height:400px"><table id="actionTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Retry</th><th>Action Needed</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
-
   <div id="monitor-retry" class="sub-panel">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h3>Manual Retry Queue</h3>
         <button class="btn-grey" onclick="monRetryRefresh()">🔄 Refresh</button>
       </div>
-      <div class="tbl-wrap">
-        <table id="retryTable">
-          <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Queued At</th><th>Progress</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap"><table id="retryTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Queued At</th><th>Progress</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
-
   <div id="monitor-triage" class="sub-panel">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h3>Error Triage</h3>
         <button class="btn-grey" onclick="monTriageRefresh()">🔄 Refresh</button>
       </div>
-      <div class="tbl-wrap">
-        <table id="triageTable">
-          <thead><tr><th>Status</th><th>Error Code</th><th>Description</th><th>Retryable</th><th>Count</th><th>First Seen</th><th>Last Seen</th><th>Services</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap"><table id="triageTable">
+        <thead><tr><th>Status</th><th>Error Code</th><th>Description</th><th>Retryable</th><th>Count</th><th>First Seen</th><th>Last Seen</th><th>Services</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
-
   <div id="monitor-callback" class="sub-panel">
     <div class="card">
       <div class="filter-row">
@@ -372,12 +362,10 @@ tr.selected td { background: #1a3550; }
         <label>To:</label><input id="cb-to" placeholder="31-DEC-24" style="width:100px">
         <button class="btn-blue" onclick="monCallbackRefresh()">🔍 Search</button>
       </div>
-      <div class="tbl-wrap" style="max-height:400px">
-        <table id="cbTable">
-          <thead><tr><th>Audit ID</th><th>Received At</th><th>Service</th><th>X-Unique-ID</th><th>Status Code</th><th>Description</th><th>Raw Payload</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <div class="tbl-wrap" style="max-height:400px"><table id="cbTable">
+        <thead><tr><th>Audit ID</th><th>Received At</th><th>Service</th><th>X-Unique-ID</th><th>Status Code</th><th>Description</th><th>Raw Payload</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </div>
   </div>
 </div>
@@ -388,27 +376,23 @@ tr.selected td { background: #1a3550; }
     <h3>Scheduler Jobs</h3>
     <div class="btn-row" style="margin-bottom:8px">
       <button class="btn-grey" onclick="schRefresh()">🔄 Refresh</button>
-      <button class="btn-green" onclick="schEnable()">▶ Enable Selected</button>
-      <button class="btn-red" onclick="schDisable()">⏸ Disable Selected</button>
+      <button class="btn-green" onclick="schEnable()">▶ Enable</button>
+      <button class="btn-red" onclick="schDisable()">⏸ Disable</button>
       <button class="btn-orange" onclick="schRunNow()">⚡ Run Now</button>
       <button class="btn-red" onclick="schStop()">⏹ Stop</button>
-      <button class="btn-grey" onclick="schHistory()">📋 Job History</button>
+      <button class="btn-grey" onclick="schHistory()">📋 History</button>
     </div>
-    <div class="tbl-wrap">
-      <table id="schTable">
-        <thead><tr><th>Job Name</th><th>Enabled</th><th>State</th><th>Interval</th><th>Next Run</th><th>Last Run</th><th>Comments</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <div class="tbl-wrap"><table id="schTable">
+      <thead><tr><th>Job Name</th><th>Enabled</th><th>State</th><th>Interval</th><th>Next Run</th><th>Last Run</th><th>Comments</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
   </div>
   <div class="card" id="schHistCard" style="display:none">
     <h3 id="schHistTitle">Job History</h3>
-    <div class="tbl-wrap">
-      <table id="schHistTable">
-        <thead><tr><th>Log ID</th><th>Job Name</th><th>Status</th><th>Run Time</th><th>Operation</th><th>User</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <div class="tbl-wrap"><table id="schHistTable">
+      <thead><tr><th>Log ID</th><th>Job Name</th><th>Status</th><th>Run Time</th><th>Operation</th><th>User</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
   </div>
 </div>
 
@@ -430,11 +414,66 @@ tr.selected td { background: #1a3550; }
     </div>
     <div class="card">
       <h3>Saved Health URLs</h3>
+      <div class="tbl-wrap"><table id="healthTable">
+        <thead><tr><th>Name</th><th>URL</th><th>Last Status</th><th>Last Tested</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: USERS (ADMIN ONLY) -->
+<div id="tab-users" class="tab-panel">
+  <div class="split">
+    <div class="card">
+      <h3>👤 User Management</h3>
+      <div class="form-grid">
+        <label>Username *</label><input id="u-username" placeholder="john.doe">
+        <label>Full Name</label><input id="u-fullName" placeholder="John Doe">
+        <label>Password</label><input id="u-password" type="password" placeholder="Leave blank to keep existing">
+        <label>Role *</label>
+        <select id="u-role">
+          <option value="ADMIN">ADMIN — Full access</option>
+          <option value="OPERATOR">OPERATOR — Monitor + Retry only</option>
+          <option value="VIEWER" selected>VIEWER — Read only</option>
+        </select>
+        <label>Is Active</label>
+        <select id="u-isActive"><option value="Y">Y — Active</option><option value="N">N — Inactive</option></select>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label style="color:#aaa;font-size:12px;display:block;margin-bottom:6px;">Assign Services (leave all unselected = access all)</label>
+        <div id="svcChips" class="svc-list"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-blue" onclick="userSave()">💾 Save User</button>
+        <button class="btn-grey" onclick="userRefresh()">🔄 Refresh</button>
+        <button class="btn-grey" onclick="userLoadSelected()">📂 Load Selected</button>
+        <button class="btn-green" onclick="userToggle('Y')">✔ Activate</button>
+        <button class="btn-red" onclick="userToggle('N')">✖ Deactivate</button>
+        <button class="btn-orange" onclick="userResetPwd()">🔑 Reset Password</button>
+        <button class="btn-red" onclick="userClear()">✖ Clear</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>User List</h3>
       <div class="tbl-wrap">
-        <table id="healthTable">
-          <thead><tr><th>Name</th><th>URL</th><th>Last Status</th><th>Last Tested</th></tr></thead>
+        <table id="userTable">
+          <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Active</th><th>Services</th><th>Last Login</th><th>Created</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <small style="color:#888;">Double-click row to load</small>
+
+      <div style="margin-top:12px;padding:8px;background:#1a2840;border-radius:4px;">
+        <div style="color:#aaa;font-size:11px;margin-bottom:4px;">Role Permissions:</div>
+        <div style="font-size:11px;color:#888;line-height:1.8">
+          <span class="role-badge role-ADMIN">ADMIN</span> — All tabs, user management, all actions<br>
+          <span class="role-badge role-OPERATOR">OPERATOR</span> — Monitor, retry, scheduler (no config changes)<br>
+          <span class="role-badge role-VIEWER">VIEWER</span> — Read-only view of all tabs
+        </div>
       </div>
     </div>
   </div>
@@ -446,6 +485,9 @@ tr.selected td { background: #1a3550; }
 <script>
 const API = '/api';
 let selectedRows = {};
+let currentUser = null;
+let allServices = [];
+let assignedServices = [];
 
 // ── UTILITIES ────────────────────────────────────────────────────────────────
 function setStatus(msg, type) {
@@ -459,6 +501,7 @@ async function api(method, path, body) {
     const opts = { method, headers: {'Content-Type':'application/json'} };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
+    if (r.status === 401) { window.location.href = '/login'; return; }
     const j = await r.json();
     if (!j.success) throw new Error(j.error);
     return j.data;
@@ -468,612 +511,264 @@ async function api(method, path, body) {
   }
 }
 
-function badge(val, trueVal, trueClass, falseClass) {
-  const ok = val === trueVal;
-  return `<span class="badge badge-${ok ? trueClass : falseClass}">${val||''}</span>`;
-}
-
 function statusBadge(s) {
-  const m = {
-    SUCCESS:'green', SENT:'blue', VALIDATION_FAILED:'orange',
-    EXHAUSTED:'red', FAILED:'orange', DUPLICATE_RECORD:'grey',
-    RECORD_NOT_FOUND:'orange', CRM_REJECTED:'red', TIMEOUT:'orange',
-    RETRY_IN_PROGRESS:'blue', Y:'green', N:'red'
-  };
+  const m = {SUCCESS:'green',SENT:'blue',VALIDATION_FAILED:'orange',EXHAUSTED:'red',
+    FAILED:'orange',DUPLICATE_RECORD:'grey',RECORD_NOT_FOUND:'orange',CRM_REJECTED:'red',
+    TIMEOUT:'orange',RETRY_IN_PROGRESS:'blue',Y:'green',N:'red'};
   return `<span class="badge badge-${m[s]||'grey'}">${s||''}</span>`;
 }
 
-function fillTable(tableId, rows, cols) {
-  const tb = document.querySelector('#' + tableId + ' tbody');
+function fillTable(tableId, rows, dblClick) {
+  const tb = document.querySelector('#'+tableId+' tbody');
   tb.innerHTML = '';
   (rows||[]).forEach((row, i) => {
     const vals = Array.isArray(row) ? row : Object.values(row);
     const tr = document.createElement('tr');
     tr.dataset.index = i;
-    tr.innerHTML = (cols || vals).map((c, ci) => {
-      const v = vals[ci] !== undefined ? vals[ci] : c;
-      const vs = v === null ? '' : String(v);
-      return `<td>${vs}</td>`;
-    }).join('');
+    tr.innerHTML = vals.map(v => `<td>${v===null?'':String(v)}</td>`).join('');
     tr.onclick = () => {
-      document.querySelectorAll('#' + tableId + ' tr.selected').forEach(r => r.classList.remove('selected'));
+      document.querySelectorAll('#'+tableId+' tr.selected').forEach(r=>r.classList.remove('selected'));
       tr.classList.add('selected');
-      selectedRows[tableId] = {index: i, data: vals};
+      selectedRows[tableId] = {index:i, data:vals};
     };
-    tr.ondblclick = () => { tr.click(); };
+    if (dblClick) tr.ondblclick = () => { tr.click(); dblClick(); };
     tb.appendChild(tr);
   });
 }
 
-function showTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if (btn) btn.classList.add('active');
   const loaders = {
     credentials: credRefresh,
-    registry: () => { regRefresh(); loadCredCodes(); },
-    mappings: () => { mapLoadNames(); mapRefresh(); },
+    registry: ()=>{regRefresh();loadCredCodes();},
+    mappings: ()=>{mapLoadNames();mapRefresh();},
     watermark: wmRefresh,
     errorcodes: ecRefresh,
-    monitor: () => { monDashRefresh(); loadServiceNames(); },
+    monitor: ()=>{monDashRefresh();loadServiceNames();},
     scheduler: schRefresh,
-    health: healthRefresh
+    health: healthRefresh,
+    users: ()=>{userRefresh();loadSvcChips();}
   };
   if (loaders[name]) loaders[name]();
 }
 
-function showSubTab(group, name) {
-  document.querySelectorAll(`#tab-${group} .sub-panel`).forEach(p => p.classList.remove('active'));
-  document.querySelectorAll(`#tab-${group} .sub-tab`).forEach(b => b.classList.remove('active'));
-  document.getElementById(group + '-' + name).classList.add('active');
-  event.target.classList.add('active');
+function showSubTab(group, name, btn) {
+  document.querySelectorAll(`#tab-${group} .sub-panel`).forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll(`#tab-${group} .sub-tab`).forEach(b=>b.classList.remove('active'));
+  document.getElementById(group+'-'+name).classList.add('active');
+  if (btn) btn.classList.add('active');
 }
 
-// ── DB PING ───────────────────────────────────────────────────────────────────
+// ── INIT & PING ───────────────────────────────────────────────────────────────
 async function ping() {
   try {
     const d = await api('GET', '/ping');
-    const el = document.getElementById('dbStatus');
-    el.textContent = '● Connected — DB: ' + (d.dbTime||'');
-    el.className = 'ok';
-    setStatus('Connected to Oracle DB', 'ok');
+    document.getElementById('dbStatus').textContent = '● Connected — ' + (d.dbTime||'');
+    document.getElementById('dbStatus').className = 'ok';
   } catch(e) {
-    const el = document.getElementById('dbStatus');
-    el.textContent = '● DB Error';
-    el.className = 'err';
+    document.getElementById('dbStatus').textContent = '● DB Error';
+    document.getElementById('dbStatus').className = 'err';
   }
+}
+
+async function loadCurrentUser() {
+  try {
+    const d = await api('GET', '/users/me');
+    currentUser = d;
+    document.getElementById('userInfo').textContent = '👤 ' + (d.fullName||d.username) + ' [' + d.role + ']';
+    if (d.role === 'ADMIN') {
+      document.getElementById('tabUsers').style.display = '';
+    }
+  } catch(e) {}
 }
 
 // ── TAB 1: CREDENTIALS ────────────────────────────────────────────────────────
 async function credRefresh() {
-  setStatus('Loading credentials...');
-  try {
-    const rows = await api('GET', '/credentials');
-    fillTable('credTable', rows);
-    setStatus('Credentials loaded: ' + rows.length, 'ok');
-  } catch(e) {}
+  try { const rows = await api('GET','/credentials'); fillTable('credTable',rows,credLoadSelected); setStatus('Credentials: '+rows.length,'ok'); } catch(e) {}
 }
-
 function credClear() {
-  ['c-credCode','c-tokenUrl','c-clientId','c-secret','c-scope','c-walletPath','c-walletPwd'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('c-grantType').value = 'client_credentials';
-  document.getElementById('c-isActive').value = 'Y';
+  ['c-credCode','c-tokenUrl','c-clientId','c-secret','c-scope','c-walletPath','c-walletPwd'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('c-grantType').value='client_credentials';
+  document.getElementById('c-isActive').value='Y';
 }
-
 async function credSave() {
-  const body = {
-    credCode: document.getElementById('c-credCode').value.trim().toUpperCase(),
-    tokenUrl: document.getElementById('c-tokenUrl').value.trim(),
-    clientId: document.getElementById('c-clientId').value.trim(),
-    clientSecret: document.getElementById('c-secret').value.trim(),
-    scope: document.getElementById('c-scope').value.trim(),
-    grantType: document.getElementById('c-grantType').value.trim(),
-    walletPath: document.getElementById('c-walletPath').value.trim(),
-    walletPwd: document.getElementById('c-walletPwd').value.trim(),
-    isActive: document.getElementById('c-isActive').value
-  };
-  if (!body.credCode || !body.tokenUrl || !body.clientId || !body.clientSecret) {
-    setStatus('Cred Code, Token URL, Client ID and Secret are required', 'warn'); return;
-  }
-  try {
-    const msg = await api('POST', '/credentials', body);
-    setStatus(msg, 'ok'); credClear(); credRefresh();
-  } catch(e) {}
+  const body={credCode:document.getElementById('c-credCode').value.trim().toUpperCase(),tokenUrl:document.getElementById('c-tokenUrl').value.trim(),clientId:document.getElementById('c-clientId').value.trim(),clientSecret:document.getElementById('c-secret').value.trim(),scope:document.getElementById('c-scope').value.trim(),grantType:document.getElementById('c-grantType').value.trim(),walletPath:document.getElementById('c-walletPath').value.trim(),walletPwd:document.getElementById('c-walletPwd').value.trim(),isActive:document.getElementById('c-isActive').value};
+  if (!body.credCode||!body.tokenUrl||!body.clientId||!body.clientSecret){setStatus('Required fields missing','warn');return;}
+  try{const msg=await api('POST','/credentials',body);setStatus(msg,'ok');credClear();credRefresh();}catch(e){}
 }
-
 async function credLoadSelected() {
-  const sel = selectedRows['credTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const credCode = sel.data[0];
-  try {
-    const d = await api('GET', '/credentials/' + credCode);
-    const vals = Object.values(d);
-    document.getElementById('c-credCode').value = vals[0]||'';
-    document.getElementById('c-tokenUrl').value = vals[1]||'';
-    document.getElementById('c-clientId').value = vals[2]||'';
-    document.getElementById('c-scope').value = vals[3]||'';
-    document.getElementById('c-grantType').value = vals[4]||'client_credentials';
-    document.getElementById('c-walletPath').value = vals[5]||'';
-    document.getElementById('c-isActive').value = vals[6]||'Y';
-    setStatus('Loaded ' + credCode + ' — enter new secret to update', 'ok');
-  } catch(e) {}
+  const sel=selectedRows['credTable']; if(!sel){setStatus('Select a row','warn');return;}
+  try{const d=await api('GET','/credentials/'+sel.data[0]);const v=Object.values(d);document.getElementById('c-credCode').value=v[0]||'';document.getElementById('c-tokenUrl').value=v[1]||'';document.getElementById('c-clientId').value=v[2]||'';document.getElementById('c-scope').value=v[3]||'';document.getElementById('c-grantType').value=v[4]||'client_credentials';document.getElementById('c-walletPath').value=v[5]||'';document.getElementById('c-isActive').value=v[6]||'Y';setStatus('Loaded '+v[0],'ok');}catch(e){}
 }
+async function credRotateSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),s=document.getElementById('c-secret').value.trim();if(!cc||!s){setStatus('Enter Cred Code and Secret','warn');return;}if(!confirm('Rotate secret for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-secret',{newSecret:s});setStatus(msg,'ok');credRefresh();}catch(e){}}
+async function credRotateWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),p=document.getElementById('c-walletPwd').value.trim();if(!cc||!p){setStatus('Enter Cred Code and Wallet Password','warn');return;}if(!confirm('Rotate wallet for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-wallet',{newWalletPwd:p});setStatus(msg,'ok');credRefresh();}catch(e){}}
+async function credTestSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return;}try{const d=await api('POST','/credentials/'+cc+'/test-secret');alert('Credential: '+cc+'\nResult: '+d.result);setStatus(d.result,'ok');}catch(e){}}
+async function credTestWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return;}try{const d=await api('POST','/credentials/'+cc+'/test-wallet');alert('Credential: '+cc+'\nResult: '+d.result);setStatus(d.result,'ok');}catch(e){}}
+async function loadCredCodes(){try{const codes=await api('GET','/credentials/codes');const sel=document.getElementById('r-credCode');sel.innerHTML='<option value="">-- Select --</option>'+codes.map(c=>`<option>${c}</option>`).join('');}catch(e){}}
 
-async function credRotateSecret() {
-  const credCode = document.getElementById('c-credCode').value.trim().toUpperCase();
-  const secret = document.getElementById('c-secret').value.trim();
-  if (!credCode || !secret) { setStatus('Enter Cred Code and new Secret', 'warn'); return; }
-  if (!confirm('Rotate secret for ' + credCode + '?')) return;
-  try {
-    const msg = await api('POST', '/credentials/' + credCode + '/rotate-secret', {newSecret: secret});
-    setStatus(msg, 'ok'); credRefresh();
-  } catch(e) {}
-}
+// ── TAB 2: REGISTRY ───────────────────────────────────────────────────────────
+async function regRefresh(){try{const rows=await api('GET','/registry');const tb=document.querySelector('#regTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td>${v[0]||''}</td><td>${v[1]||''}</td><td>${v[2]||''}</td><td>${v[4]||''}</td><td>${v[11]||''}</td><td>${statusBadge(v[25])}</td>`;tr.onclick=()=>{document.querySelectorAll('#regTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['regTable']={index:i,data:v};};tr.ondblclick=()=>{tr.click();regLoadSelected();};tb.appendChild(tr);});setStatus('Registry: '+rows.length,'ok');window._regRows=rows;}catch(e){}}
+function regLoadSelected(){const sel=selectedRows['regTable'];if(!sel){setStatus('Select a row','warn');return;}const v=sel.data;const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];ids.forEach((id,i)=>{const el=document.getElementById('r-'+id);if(el)el.value=v[i]||'';});}
+function regClear(){['r-serviceName','r-entityName','r-sourceView','r-sourceProc','r-sourceFilterCol','r-sourceKeyCol','r-jsonMappingName','r-recordTypeHdr','r-eventCodeHdr','r-apicEndpointUrl','r-apicApiVersion','r-callbackTargetTable','r-callbackKeyCol','r-callbackStatusCol','r-callbackRefCol','r-postCallbackProc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('r-executionOrder').value='99';document.getElementById('r-batchSize').value='100';document.getElementById('r-maxRetryCount').value='3';document.getElementById('r-retryIntervalMinutes').value='30';document.getElementById('r-timeoutMinutes').value='60';document.getElementById('r-isActive').value='Y';}
+async function regSave(){const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];const body={};ids.forEach(id=>{const el=document.getElementById('r-'+id);if(el)body[id]=el.value;});if(!body.serviceName){setStatus('Service Name required','warn');return;}try{const msg=await api('POST','/registry',body);setStatus(msg,'ok');regRefresh();}catch(e){}}
+async function regToggle(val){const sel=selectedRows['regTable'];if(!sel){setStatus('Select a row','warn');return;}try{const msg=await api('POST','/registry/'+encodeURIComponent(sel.data[0])+'/toggle',{isActive:val});setStatus(msg,'ok');regRefresh();}catch(e){}}
 
-async function credRotateWallet() {
-  const credCode = document.getElementById('c-credCode').value.trim().toUpperCase();
-  const pwd = document.getElementById('c-walletPwd').value.trim();
-  if (!credCode || !pwd) { setStatus('Enter Cred Code and Wallet Password', 'warn'); return; }
-  if (!confirm('Rotate wallet password for ' + credCode + '?')) return;
-  try {
-    const msg = await api('POST', '/credentials/' + credCode + '/rotate-wallet', {newWalletPwd: pwd});
-    setStatus(msg, 'ok'); credRefresh();
-  } catch(e) {}
-}
-
-async function credTestSecret() {
-  const credCode = document.getElementById('c-credCode').value.trim().toUpperCase();
-  if (!credCode) { setStatus('Enter Cred Code', 'warn'); return; }
-  try {
-    const d = await api('POST', '/credentials/' + credCode + '/test-secret');
-    alert('Credential: ' + credCode + '\nField: Client Secret\n\nResult: ' + d.result);
-    setStatus('Secret test: ' + d.result, 'ok');
-  } catch(e) {}
-}
-
-async function credTestWallet() {
-  const credCode = document.getElementById('c-credCode').value.trim().toUpperCase();
-  if (!credCode) { setStatus('Enter Cred Code', 'warn'); return; }
-  try {
-    const d = await api('POST', '/credentials/' + credCode + '/test-wallet');
-    alert('Credential: ' + credCode + '\nField: Wallet Password\n\nResult: ' + d.result);
-    setStatus('Wallet test: ' + d.result, 'ok');
-  } catch(e) {}
-}
-
-async function loadCredCodes() {
-  try {
-    const codes = await api('GET', '/credentials/codes');
-    const sel = document.getElementById('r-credCode');
-    sel.innerHTML = '<option value="">-- Select --</option>' + codes.map(c => `<option>${c}</option>`).join('');
-  } catch(e) {}
-}
-
-// ── TAB 2: SERVICE REGISTRY ───────────────────────────────────────────────────
-async function regRefresh() {
-  setStatus('Loading registry...');
-  try {
-    const rows = await api('GET', '/registry');
-    const tb = document.querySelector('#regTable tbody');
-    tb.innerHTML = '';
-    rows.forEach((row, i) => {
-      const vals = Object.values(row);
-      const tr = document.createElement('tr');
-      tr.dataset.index = i;
-      tr.innerHTML = `<td>${vals[0]||''}</td><td>${vals[1]||''}</td><td>${vals[2]||''}</td><td>${vals[4]||''}</td><td>${vals[11]||''}</td><td>${statusBadge(vals[25])}</td>`;
-      tr.onclick = () => { document.querySelectorAll('#regTable tr.selected').forEach(r=>r.classList.remove('selected')); tr.classList.add('selected'); selectedRows['regTable'] = {index:i, data:vals, full:row}; };
-      tr.ondblclick = () => { tr.click(); regLoadSelected(); };
-      tb.appendChild(tr);
-    });
-    setStatus('Registry loaded: ' + rows.length, 'ok');
-    window._regRows = rows;
-  } catch(e) {}
-}
-
-function regLoadSelected() {
-  const sel = selectedRows['regTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const v = sel.data;
-  const ids = ['serviceName','entityName','operationType','sourceType','sourceView','sourceProc',
-    'sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr',
-    'apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol',
-    'callbackStatusCol','callbackRefCol','postCallbackProc','credCode',
-    'executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];
-  ids.forEach((id, i) => {
-    const el = document.getElementById('r-' + id);
-    if (el) { el.tagName === 'SELECT' ? el.value = v[i]||'' : el.value = v[i]||''; }
-  });
-  setStatus('Loaded ' + v[0], 'ok');
-}
-
-function regClear() {
-  ['r-serviceName','r-entityName','r-sourceView','r-sourceProc','r-sourceFilterCol','r-sourceKeyCol',
-   'r-jsonMappingName','r-recordTypeHdr','r-eventCodeHdr','r-apicEndpointUrl','r-apicApiVersion',
-   'r-callbackTargetTable','r-callbackKeyCol','r-callbackStatusCol','r-callbackRefCol','r-postCallbackProc']
-   .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('r-executionOrder').value='99';
-  document.getElementById('r-batchSize').value='100';
-  document.getElementById('r-maxRetryCount').value='3';
-  document.getElementById('r-retryIntervalMinutes').value='30';
-  document.getElementById('r-timeoutMinutes').value='60';
-  document.getElementById('r-isActive').value='Y';
-}
-
-async function regSave() {
-  const ids = ['serviceName','entityName','operationType','sourceType','sourceView','sourceProc',
-    'sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr',
-    'apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol',
-    'callbackStatusCol','callbackRefCol','postCallbackProc','credCode',
-    'executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];
-  const body = {};
-  ids.forEach(id => { const el = document.getElementById('r-'+id); if(el) body[id] = el.value; });
-  if (!body.serviceName) { setStatus('Service Name is required', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/registry', body);
-    setStatus(msg, 'ok'); regRefresh();
-  } catch(e) {}
-}
-
-async function regToggle(val) {
-  const sel = selectedRows['regTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/registry/' + encodeURIComponent(sel.data[0]) + '/toggle', {isActive: val});
-    setStatus(msg, 'ok'); regRefresh();
-  } catch(e) {}
-}
-
-// ── TAB 3: FIELD MAPPINGS ─────────────────────────────────────────────────────
-async function mapLoadNames() {
-  try {
-    const names = await api('GET', '/mappings/names');
-    const sel = document.getElementById('m-jsonMappingName');
-    sel.innerHTML = names.map(n => `<option>${n}</option>`).join('');
-  } catch(e) {}
-}
-
-async function mapRefresh() {
-  const name = document.getElementById('m-jsonMappingName').value;
-  setStatus('Loading mappings...');
-  try {
-    const rows = await api('GET', '/mappings' + (name ? '?mappingName=' + encodeURIComponent(name) : ''));
-    fillTable('mapTable', rows);
-    setStatus('Mappings loaded: ' + rows.length, 'ok');
-    window._mapRows = rows;
-  } catch(e) {}
-}
-
-function mapLoadSelected() {
-  const sel = selectedRows['mapTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const v = sel.data;
-  document.getElementById('m-displayOrder').value = v[2]||'';
-  document.getElementById('m-sourceColumn').value = v[3]||'';
-  document.getElementById('m-jsonPath').value = v[4]||'';
-  document.getElementById('m-dataType').value = v[5]||'VARCHAR';
-  document.getElementById('m-dateFormat').value = v[6]||'';
-  document.getElementById('m-isMandatory').value = v[7]||'N';
-  document.getElementById('m-isActive').value = v[8]||'Y';
-}
-
-function mapClear() {
-  ['m-displayOrder','m-sourceColumn','m-jsonPath','m-dateFormat'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('m-dataType').value='VARCHAR';
-  document.getElementById('m-isMandatory').value='N';
-  document.getElementById('m-isActive').value='Y';
-}
-
-async function mapSave() {
-  const body = {
-    jsonMappingName: document.getElementById('m-jsonMappingName').value,
-    displayOrder: document.getElementById('m-displayOrder').value,
-    sourceColumn: document.getElementById('m-sourceColumn').value,
-    jsonPath: document.getElementById('m-jsonPath').value,
-    dataType: document.getElementById('m-dataType').value,
-    dateFormat: document.getElementById('m-dateFormat').value,
-    isMandatory: document.getElementById('m-isMandatory').value,
-    isActive: document.getElementById('m-isActive').value
-  };
-  if (!body.sourceColumn || !body.jsonPath) { setStatus('Source Column and JSON Path required', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/mappings', body);
-    setStatus(msg, 'ok'); mapRefresh();
-  } catch(e) {}
-}
-
-async function mapToggle(val) {
-  const sel = selectedRows['mapTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/mappings/' + sel.data[0] + '/toggle', {isActive: val});
-    setStatus(msg, 'ok'); mapRefresh();
-  } catch(e) {}
-}
+// ── TAB 3: MAPPINGS ───────────────────────────────────────────────────────────
+async function mapLoadNames(){try{const names=await api('GET','/mappings/names');const sel=document.getElementById('m-jsonMappingName');sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');}catch(e){}}
+async function mapRefresh(){const name=document.getElementById('m-jsonMappingName').value;try{const rows=await api('GET','/mappings'+(name?'?mappingName='+encodeURIComponent(name):''));fillTable('mapTable',rows,mapLoadSelected);setStatus('Mappings: '+rows.length,'ok');}catch(e){}}
+function mapLoadSelected(){const sel=selectedRows['mapTable'];if(!sel)return;const v=sel.data;document.getElementById('m-displayOrder').value=v[2]||'';document.getElementById('m-sourceColumn').value=v[3]||'';document.getElementById('m-jsonPath').value=v[4]||'';document.getElementById('m-dataType').value=v[5]||'VARCHAR';document.getElementById('m-dateFormat').value=v[6]||'';document.getElementById('m-isMandatory').value=v[7]||'N';document.getElementById('m-isActive').value=v[8]||'Y';}
+function mapClear(){['m-displayOrder','m-sourceColumn','m-jsonPath','m-dateFormat'].forEach(id=>document.getElementById(id).value='');document.getElementById('m-dataType').value='VARCHAR';document.getElementById('m-isMandatory').value='N';document.getElementById('m-isActive').value='Y';}
+async function mapSave(){const body={jsonMappingName:document.getElementById('m-jsonMappingName').value,displayOrder:document.getElementById('m-displayOrder').value,sourceColumn:document.getElementById('m-sourceColumn').value,jsonPath:document.getElementById('m-jsonPath').value,dataType:document.getElementById('m-dataType').value,dateFormat:document.getElementById('m-dateFormat').value,isMandatory:document.getElementById('m-isMandatory').value,isActive:document.getElementById('m-isActive').value};if(!body.sourceColumn||!body.jsonPath){setStatus('Source Column and JSON Path required','warn');return;}try{const msg=await api('POST','/mappings',body);setStatus(msg,'ok');mapRefresh();}catch(e){}}
+async function mapToggle(val){const sel=selectedRows['mapTable'];if(!sel){setStatus('Select a row','warn');return;}try{const msg=await api('POST','/mappings/'+sel.data[0]+'/toggle',{isActive:val});setStatus(msg,'ok');mapRefresh();}catch(e){}}
 
 // ── TAB 4: WATERMARK ──────────────────────────────────────────────────────────
-async function wmRefresh() {
-  setStatus('Loading watermarks...');
-  try {
-    const rows = await api('GET', '/watermarks');
-    fillTable('wmTable', rows);
-    setStatus('Watermarks loaded: ' + rows.length, 'ok');
-  } catch(e) {}
-}
-
-async function wmReset() {
-  const sel = selectedRows['wmTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const svc = sel.data[0];
-  if (!confirm('Reset watermark for ' + svc + '?')) return;
-  try {
-    const msg = await api('POST', '/watermarks/' + encodeURIComponent(svc) + '/reset');
-    setStatus(msg, 'ok'); wmRefresh();
-  } catch(e) {}
-}
-
-async function wmSetDate() {
-  const sel = selectedRows['wmTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const svc = sel.data[0];
-  const date = document.getElementById('wm-date').value;
-  if (!date) { setStatus('Enter a date', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/watermarks/' + encodeURIComponent(svc) + '/set-date', {date});
-    setStatus(msg, 'ok'); wmRefresh();
-  } catch(e) {}
-}
+async function wmRefresh(){try{const rows=await api('GET','/watermarks');fillTable('wmTable',rows);setStatus('Watermarks: '+rows.length,'ok');}catch(e){}}
+async function wmReset(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return;}if(!confirm('Reset watermark for '+sel.data[0]+'?'))return;try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/reset');setStatus(msg,'ok');wmRefresh();}catch(e){}}
+async function wmSetDate(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return;}const date=document.getElementById('wm-date').value;if(!date){setStatus('Enter a date','warn');return;}try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/set-date',{date});setStatus(msg,'ok');wmRefresh();}catch(e){}}
 
 // ── TAB 5: ERROR CODES ────────────────────────────────────────────────────────
-async function ecRefresh() {
-  setStatus('Loading error codes...');
-  try {
-    const rows = await api('GET', '/error-codes');
-    fillTable('ecTable', rows);
-    setStatus('Error codes loaded: ' + rows.length, 'ok');
-  } catch(e) {}
-}
-
-function ecLoadSelected() {
-  const sel = selectedRows['ecTable'];
-  if (!sel) { setStatus('Select a row first', 'warn'); return; }
-  const v = sel.data;
-  document.getElementById('e-errorCode').value = v[0]||'';
-  document.getElementById('e-errorCategory').value = v[1]||'';
-  document.getElementById('e-errorDescription').value = v[2]||'';
-  document.getElementById('e-isRetryable').value = v[3]||'Y';
-}
-
-function ecClear() {
-  ['e-errorCode','e-errorCategory','e-errorDescription'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('e-isRetryable').value='Y';
-}
-
-async function ecSave() {
-  const body = {
-    errorCode: document.getElementById('e-errorCode').value.trim(),
-    errorCategory: document.getElementById('e-errorCategory').value.trim(),
-    errorDescription: document.getElementById('e-errorDescription').value.trim(),
-    isRetryable: document.getElementById('e-isRetryable').value
-  };
-  if (!body.errorCode) { setStatus('Error Code required', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/error-codes', body);
-    setStatus(msg, 'ok'); ecRefresh();
-  } catch(e) {}
-}
+async function ecRefresh(){try{const rows=await api('GET','/error-codes');fillTable('ecTable',rows,ecLoadSelected);setStatus('Error codes: '+rows.length,'ok');}catch(e){}}
+function ecLoadSelected(){const sel=selectedRows['ecTable'];if(!sel)return;const v=sel.data;document.getElementById('e-errorCode').value=v[0]||'';document.getElementById('e-errorCategory').value=v[1]||'';document.getElementById('e-errorDescription').value=v[2]||'';document.getElementById('e-isRetryable').value=v[3]||'Y';}
+function ecClear(){['e-errorCode','e-errorCategory','e-errorDescription'].forEach(id=>document.getElementById(id).value='');document.getElementById('e-isRetryable').value='Y';}
+async function ecSave(){const body={errorCode:document.getElementById('e-errorCode').value.trim(),errorCategory:document.getElementById('e-errorCategory').value.trim(),errorDescription:document.getElementById('e-errorDescription').value.trim(),isRetryable:document.getElementById('e-isRetryable').value};if(!body.errorCode){setStatus('Error Code required','warn');return;}try{const msg=await api('POST','/error-codes',body);setStatus(msg,'ok');ecRefresh();}catch(e){}}
 
 // ── TAB 6: MONITOR ────────────────────────────────────────────────────────────
-async function loadServiceNames() {
-  try {
-    const names = await api('GET', '/monitor/service-names');
-    const statuses = await api('GET', '/monitor/statuses');
-    ['f-service','cb-service'].forEach(id => {
-      const sel = document.getElementById(id);
-      sel.innerHTML = '<option value="">All</option>' + names.map(n=>`<option>${n}</option>`).join('');
-    });
-    const fStatus = document.getElementById('f-status');
-    fStatus.innerHTML = '<option value="">All</option>' + statuses.map(s=>`<option>${s}</option>`).join('');
-  } catch(e) {}
-}
-
-async function monDashRefresh() {
-  setStatus('Loading dashboard...');
-  try {
-    const rows = await api('GET', '/monitor/dashboard');
-    const cards = document.getElementById('dashCards');
-    const totals = rows.reduce((a,r) => {
-      const v = Object.values(r);
-      a.total += Number(v[1])||0; a.success += Number(v[2])||0;
-      a.action += Number(v[9])||0; a.exhausted += Number(v[7])||0;
-      return a;
-    }, {total:0,success:0,action:0,exhausted:0});
-    cards.innerHTML = `
-      <div class="dash-card"><div class="num">${totals.total}</div><div class="lbl">Total Records</div></div>
-      <div class="dash-card"><div class="num" style="color:#27ae60">${totals.success}</div><div class="lbl">Success</div></div>
-      <div class="dash-card ${totals.action>0?'warn':''}"><div class="num">${totals.action}</div><div class="lbl">Action Needed</div></div>
-      <div class="dash-card ${totals.exhausted>0?'danger':''}"><div class="num">${totals.exhausted}</div><div class="lbl">Exhausted</div></div>
-    `;
-    fillTable('dashTable', rows);
-    setStatus('Dashboard loaded', 'ok');
-  } catch(e) {}
-}
-
-async function monRecordsRefresh() {
-  const params = new URLSearchParams({
-    serviceName: document.getElementById('f-service').value,
-    status: document.getElementById('f-status').value,
-    fromDate: document.getElementById('f-from').value,
-    toDate: document.getElementById('f-to').value,
-    recordId: document.getElementById('f-recId').value
-  });
-  setStatus('Loading records...');
-  try {
-    const rows = await api('GET', '/monitor/records?' + params);
-    fillTable('recTable', rows);
-    setStatus('Records: ' + rows.length, 'ok');
-  } catch(e) {}
-}
-
-async function monManualRetry() {
-  const sel = selectedRows['recTable'];
-  if (!sel) { setStatus('Select a record first', 'warn'); return; }
-  const logId = sel.data[0];
-  if (!confirm('Queue LOG_ID=' + logId + ' for manual retry?')) return;
-  try {
-    const msg = await api('POST', '/monitor/records/' + logId + '/manual-retry');
-    setStatus(msg, 'ok'); monRecordsRefresh();
-  } catch(e) {}
-}
-
-async function monActionRefresh() {
-  setStatus('Loading action items...');
-  try {
-    const rows = await api('GET', '/monitor/action-needed');
-    fillTable('actionTable', rows);
-    setStatus('Action needed: ' + rows.length, rows.length > 0 ? 'warn' : 'ok');
-  } catch(e) {}
-}
-
-async function monManualRetryAction() {
-  const sel = selectedRows['actionTable'];
-  if (!sel) { setStatus('Select a record first', 'warn'); return; }
-  const logId = sel.data[0];
-  if (!confirm('Queue LOG_ID=' + logId + ' for manual retry?')) return;
-  try {
-    const msg = await api('POST', '/monitor/records/' + logId + '/manual-retry');
-    setStatus(msg, 'ok'); monActionRefresh();
-  } catch(e) {}
-}
-
-async function monRetryRefresh() {
-  setStatus('Loading retry queue...');
-  try {
-    const rows = await api('GET', '/monitor/retry-queue');
-    fillTable('retryTable', rows);
-    setStatus('Retry queue: ' + rows.length, 'ok');
-  } catch(e) {}
-}
-
-async function monTriageRefresh() {
-  setStatus('Loading error triage...');
-  try {
-    const rows = await api('GET', '/monitor/error-triage');
-    fillTable('triageTable', rows);
-    setStatus('Error triage loaded', 'ok');
-  } catch(e) {}
-}
-
-async function monCallbackRefresh() {
-  const params = new URLSearchParams({
-    serviceName: document.getElementById('cb-service').value,
-    statusCode: document.getElementById('cb-status').value,
-    fromDate: document.getElementById('cb-from').value,
-    toDate: document.getElementById('cb-to').value
-  });
-  setStatus('Loading callbacks...');
-  try {
-    const rows = await api('GET', '/monitor/callback-audit?' + params);
-    fillTable('cbTable', rows);
-    setStatus('Callbacks: ' + rows.length, 'ok');
-  } catch(e) {}
-}
+async function loadServiceNames(){try{const names=await api('GET','/monitor/service-names');const statuses=await api('GET','/monitor/statuses');['f-service','cb-service'].forEach(id=>{const sel=document.getElementById(id);sel.innerHTML='<option value="">All</option>'+names.map(n=>`<option>${n}</option>`).join('');});document.getElementById('f-status').innerHTML='<option value="">All</option>'+statuses.map(s=>`<option>${s}</option>`).join('');}catch(e){}}
+async function monDashRefresh(){try{const rows=await api('GET','/monitor/dashboard');const t=rows.reduce((a,r)=>{const v=Object.values(r);a.total+=Number(v[1])||0;a.success+=Number(v[2])||0;a.action+=Number(v[9])||0;a.exhausted+=Number(v[7])||0;return a;},{total:0,success:0,action:0,exhausted:0});document.getElementById('dashCards').innerHTML=`<div class="dash-card"><div class="num">${t.total}</div><div class="lbl">Total</div></div><div class="dash-card"><div class="num" style="color:#27ae60">${t.success}</div><div class="lbl">Success</div></div><div class="dash-card ${t.action>0?'warn':''}"><div class="num">${t.action}</div><div class="lbl">Action Needed</div></div><div class="dash-card ${t.exhausted>0?'danger':''}"><div class="num">${t.exhausted}</div><div class="lbl">Exhausted</div></div>`;fillTable('dashTable',rows);setStatus('Dashboard loaded','ok');}catch(e){}}
+async function monRecordsRefresh(){const params=new URLSearchParams({serviceName:document.getElementById('f-service').value,status:document.getElementById('f-status').value,fromDate:document.getElementById('f-from').value,toDate:document.getElementById('f-to').value,recordId:document.getElementById('f-recId').value});try{const rows=await api('GET','/monitor/records?'+params);fillTable('recTable',rows);setStatus('Records: '+rows.length,'ok');}catch(e){}}
+async function monManualRetry(tableId){const sel=selectedRows[tableId];if(!sel){setStatus('Select a record','warn');return;}const logId=sel.data[0];if(!confirm('Queue LOG_ID='+logId+' for manual retry?'))return;try{const msg=await api('POST','/monitor/records/'+logId+'/manual-retry');setStatus(msg,'ok');}catch(e){}}
+async function monActionRefresh(){try{const rows=await api('GET','/monitor/action-needed');fillTable('actionTable',rows);setStatus('Action needed: '+rows.length,rows.length>0?'warn':'ok');}catch(e){}}
+async function monRetryRefresh(){try{const rows=await api('GET','/monitor/retry-queue');fillTable('retryTable',rows);setStatus('Retry queue: '+rows.length,'ok');}catch(e){}}
+async function monTriageRefresh(){try{const rows=await api('GET','/monitor/error-triage');fillTable('triageTable',rows);setStatus('Triage loaded','ok');}catch(e){}}
+async function monCallbackRefresh(){const params=new URLSearchParams({serviceName:document.getElementById('cb-service').value,statusCode:document.getElementById('cb-status').value,fromDate:document.getElementById('cb-from').value,toDate:document.getElementById('cb-to').value});try{const rows=await api('GET','/monitor/callback-audit?'+params);fillTable('cbTable',rows);setStatus('Callbacks: '+rows.length,'ok');}catch(e){}}
 
 // ── TAB 8: SCHEDULER ──────────────────────────────────────────────────────────
-async function schRefresh() {
-  setStatus('Loading scheduler jobs...');
+async function schRefresh(){try{const rows=await api('GET','/scheduler');const tb=document.querySelector('#schTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td>${v[0]||''}</td><td>${statusBadge(v[1])}</td><td>${v[2]||''}</td><td style="font-size:11px">${v[3]||''}</td><td>${v[4]||''}</td><td>${v[5]||''}</td><td>${v[6]||''}</td>`;tr.onclick=()=>{document.querySelectorAll('#schTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['schTable']={index:i,data:v};};tb.appendChild(tr);});setStatus('Jobs: '+rows.length,'ok');}catch(e){}}
+async function schEnable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/enable');setStatus(msg,'ok');schRefresh();}catch(e){}}
+async function schDisable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Disable '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/disable');setStatus(msg,'ok');schRefresh();}catch(e){}}
+async function schRunNow(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Run '+sel.data[0]+' now?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/run-now');setStatus(msg,'ok');schRefresh();}catch(e){}}
+async function schStop(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Stop '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/stop');setStatus(msg,'ok');schRefresh();}catch(e){}}
+async function schHistory(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}try{const rows=await api('GET','/scheduler/'+encodeURIComponent(sel.data[0])+'/history');fillTable('schHistTable',rows);document.getElementById('schHistTitle').textContent='Job History: '+sel.data[0];document.getElementById('schHistCard').style.display='block';setStatus('History: '+rows.length,'ok');}catch(e){}}
+
+// ── TAB 9: HEALTH ─────────────────────────────────────────────────────────────
+async function healthRefresh(){try{const rows=await api('GET','/health/urls');fillTable('healthTable',rows);}catch(e){}}
+async function healthTestUrl(){const url=document.getElementById('h-url').value.trim();const name=document.getElementById('h-name').value.trim()||url;if(!url){setStatus('Enter a URL','warn');return;}setStatus('Testing '+url+'...');try{const d=await api('POST','/health/test',{url,name});const res=document.getElementById('healthResult');res.style.display='block';res.style.color=d.ok?'#27ae60':'#e74c3c';res.innerHTML=`<b>${name}</b><br>URL: ${url}<br>Status: ${d.statusCode||'ERROR'}<br>Time: ${d.elapsedMs}ms${d.error?'<br>Error: '+d.error:''}`;setStatus(name+' — HTTP '+(d.statusCode||'ERR')+' '+(d.elapsedMs||'')+'ms',d.ok?'ok':'err');}catch(e){}}
+async function healthTestToken(){try{const codes=await api('GET','/credentials/codes');if(!codes.length){setStatus('No active credentials','warn');return;}const cc=prompt('Cred Code:\n'+codes.join(', '),codes[0]);if(!cc)return;setStatus('Testing token...');const d=await api('POST','/health/test-token',{credCode:cc});setStatus(d.result,d.ok?'ok':'err');alert(d.result);}catch(e){}}
+
+// ── TAB: USERS ────────────────────────────────────────────────────────────────
+async function loadSvcChips() {
   try {
-    const rows = await api('GET', '/scheduler');
-    const tb = document.querySelector('#schTable tbody');
+    allServices = await api('GET', '/monitor/service-names');
+    renderSvcChips([]);
+  } catch(e) {}
+}
+
+function renderSvcChips(assigned) {
+  assignedServices = assigned || [];
+  const container = document.getElementById('svcChips');
+  container.innerHTML = allServices.map(s => {
+    const on = assignedServices.includes(s);
+    return `<div class="svc-chip ${on?'assigned':''}" onclick="toggleSvc(this,'${s}')">${s}</div>`;
+  }).join('');
+}
+
+function toggleSvc(el, svc) {
+  el.classList.toggle('assigned');
+  if (el.classList.contains('assigned')) {
+    if (!assignedServices.includes(svc)) assignedServices.push(svc);
+  } else {
+    assignedServices = assignedServices.filter(s => s !== svc);
+  }
+}
+
+async function userRefresh() {
+  try {
+    const rows = await api('GET', '/users');
+    const tb = document.querySelector('#userTable tbody');
     tb.innerHTML = '';
     rows.forEach((row, i) => {
       const v = Object.values(row);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${v[0]||''}</td><td>${statusBadge(v[1])}</td><td>${v[2]||''}</td><td style="font-size:11px">${v[3]||''}</td><td>${v[4]||''}</td><td>${v[5]||''}</td><td>${v[6]||''}</td>`;
-      tr.onclick = () => { document.querySelectorAll('#schTable tr.selected').forEach(r=>r.classList.remove('selected')); tr.classList.add('selected'); selectedRows['schTable']={index:i,data:v}; };
+      const roleCls = 'role-' + (v[2]||'VIEWER');
+      tr.innerHTML = `<td>${v[0]||''}</td><td>${v[1]||''}</td>
+        <td><span class="role-badge ${roleCls}">${v[2]||''}</span></td>
+        <td>${statusBadge(v[3])}</td>
+        <td style="font-size:11px">${v[4]||'All'}</td>
+        <td>${v[5]||''}</td><td>${v[6]||''}</td>`;
+      tr.onclick = () => {
+        document.querySelectorAll('#userTable tr.selected').forEach(r=>r.classList.remove('selected'));
+        tr.classList.add('selected');
+        selectedRows['userTable'] = {index:i, data:v};
+      };
+      tr.ondblclick = () => { tr.click(); userLoadSelected(); };
       tb.appendChild(tr);
     });
-    setStatus('Jobs loaded: ' + rows.length, 'ok');
+    setStatus('Users: ' + rows.length, 'ok');
   } catch(e) {}
 }
 
-async function schEnable() {
-  const sel = selectedRows['schTable'];
-  if (!sel) { setStatus('Select a job', 'warn'); return; }
-  try { const msg = await api('POST', '/scheduler/' + encodeURIComponent(sel.data[0]) + '/enable'); setStatus(msg, 'ok'); schRefresh(); } catch(e) {}
+function userLoadSelected() {
+  const sel = selectedRows['userTable'];
+  if (!sel) { setStatus('Select a row', 'warn'); return; }
+  const v = sel.data;
+  document.getElementById('u-username').value = v[0]||'';
+  document.getElementById('u-fullName').value = v[1]||'';
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-role').value = v[2]||'VIEWER';
+  document.getElementById('u-isActive').value = v[3]||'Y';
+  const svcs = v[4] && v[4] !== 'All' ? v[4].split(',').map(s=>s.trim()) : [];
+  renderSvcChips(svcs);
+  setStatus('Loaded ' + v[0], 'ok');
 }
-async function schDisable() {
-  const sel = selectedRows['schTable'];
-  if (!sel) { setStatus('Select a job', 'warn'); return; }
-  if (!confirm('Disable ' + sel.data[0] + '?')) return;
-  try { const msg = await api('POST', '/scheduler/' + encodeURIComponent(sel.data[0]) + '/disable'); setStatus(msg, 'ok'); schRefresh(); } catch(e) {}
+
+function userClear() {
+  ['u-username','u-fullName','u-password'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('u-role').value='VIEWER';
+  document.getElementById('u-isActive').value='Y';
+  renderSvcChips([]);
 }
-async function schRunNow() {
-  const sel = selectedRows['schTable'];
-  if (!sel) { setStatus('Select a job', 'warn'); return; }
-  if (!confirm('Run ' + sel.data[0] + ' immediately?')) return;
-  try { const msg = await api('POST', '/scheduler/' + encodeURIComponent(sel.data[0]) + '/run-now'); setStatus(msg, 'ok'); schRefresh(); } catch(e) {}
-}
-async function schStop() {
-  const sel = selectedRows['schTable'];
-  if (!sel) { setStatus('Select a job', 'warn'); return; }
-  if (!confirm('Stop ' + sel.data[0] + '?')) return;
-  try { const msg = await api('POST', '/scheduler/' + encodeURIComponent(sel.data[0]) + '/stop'); setStatus(msg, 'ok'); schRefresh(); } catch(e) {}
-}
-async function schHistory() {
-  const sel = selectedRows['schTable'];
-  if (!sel) { setStatus('Select a job', 'warn'); return; }
+
+async function userSave() {
+  const body = {
+    username: document.getElementById('u-username').value.trim().toLowerCase(),
+    fullName: document.getElementById('u-fullName').value.trim(),
+    password: document.getElementById('u-password').value.trim(),
+    role: document.getElementById('u-role').value,
+    isActive: document.getElementById('u-isActive').value,
+    services: assignedServices.join(',')
+  };
+  if (!body.username) { setStatus('Username required', 'warn'); return; }
   try {
-    const rows = await api('GET', '/scheduler/' + encodeURIComponent(sel.data[0]) + '/history');
-    fillTable('schHistTable', rows);
-    document.getElementById('schHistTitle').textContent = 'Job History: ' + sel.data[0];
-    document.getElementById('schHistCard').style.display = 'block';
-    setStatus('History loaded: ' + rows.length, 'ok');
+    const msg = await api('POST', '/users', body);
+    setStatus(msg, 'ok'); userClear(); userRefresh();
   } catch(e) {}
 }
 
-// ── TAB 9: HEALTH CHECK ───────────────────────────────────────────────────────
-async function healthRefresh() {
+async function userToggle(val) {
+  const sel = selectedRows['userTable'];
+  if (!sel) { setStatus('Select a row', 'warn'); return; }
   try {
-    const rows = await api('GET', '/health/urls');
-    fillTable('healthTable', rows);
+    const msg = await api('POST', '/users/' + sel.data[0] + '/toggle', {isActive: val});
+    setStatus(msg, 'ok'); userRefresh();
   } catch(e) {}
 }
 
-async function healthTestUrl() {
-  const url = document.getElementById('h-url').value.trim();
-  const name = document.getElementById('h-name').value.trim() || url;
-  if (!url) { setStatus('Enter a URL', 'warn'); return; }
-  setStatus('Testing ' + url + '...');
+async function userResetPwd() {
+  const sel = selectedRows['userTable'];
+  if (!sel) { setStatus('Select a row', 'warn'); return; }
+  const pwd = prompt('New password for ' + sel.data[0] + ':');
+  if (!pwd) return;
   try {
-    const d = await api('POST', '/health/test', {url, name});
-    const res = document.getElementById('healthResult');
-    res.style.display = 'block';
-    const ok = d.ok;
-    res.style.color = ok ? '#27ae60' : '#e74c3c';
-    res.innerHTML = `<b>${name}</b><br>URL: ${url}<br>Status: ${d.statusCode || 'ERROR'}<br>Time: ${d.elapsedMs}ms<br>${d.error ? 'Error: '+d.error : ''}`;
-    setStatus(name + ' — HTTP ' + (d.statusCode||'ERR') + ' ' + (d.elapsedMs||'')+'ms', ok?'ok':'err');
+    const msg = await api('POST', '/users/' + sel.data[0] + '/reset-password', {newPassword: pwd});
+    setStatus(msg, 'ok');
   } catch(e) {}
 }
 
-async function healthTestToken() {
-  const credCodes = await api('GET', '/credentials/codes');
-  if (!credCodes.length) { setStatus('No active credentials found', 'warn'); return; }
-  const credCode = prompt('Cred Code to test token:\n' + credCodes.join(', '), credCodes[0]);
-  if (!credCode) return;
-  setStatus('Testing token for ' + credCode + '...');
-  try {
-    const d = await api('POST', '/health/test-token', {credCode});
-    setStatus(d.result, d.ok ? 'ok' : 'err');
-    alert(d.result);
-  } catch(e) {}
-}
-
-// ── INIT ──────────────────────────────────────────────────────────────────────
-window.onload = () => {
-  ping();
-  credRefresh();
-};
+// ── STARTUP ───────────────────────────────────────────────────────────────────
+window.onload = () => { ping(); loadCurrentUser(); credRefresh(); };
 </script>
 </body>
 </html>
