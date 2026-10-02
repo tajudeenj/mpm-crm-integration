@@ -5907,6 +5907,18 @@ class HealthCheckTab extends JPanel {
 
         app.setStatus("Testing " + name + "...", CrmAdminTool.CLR_LABEL);
 
+        // If URL is marked as DIRECT or contains media service host,
+        // call it directly from Java — do NOT route through Oracle UTL_HTTP
+        boolean isDirect = name.toUpperCase().contains("DIRECT")
+                        || name.toUpperCase().contains("MEDIA")
+                        || url.contains("media")
+                        || url.contains(":8080")
+                        || url.contains(":9090");
+        if (isDirect) {
+            testUrlDirect(row, name, url);
+            return;
+        }
+
         // Test via Oracle UTL_HTTP through a PL/SQL call
         String sql =
             "DECLARE\n" +
@@ -5969,6 +5981,48 @@ class HealthCheckTab extends JPanel {
             mdlUrls.setValueAt("ERROR", row, 2);
             app.setStatus("URL test error: " + ex.getMessage(),
                 CrmAdminTool.CLR_ERROR);
+        }
+    }
+
+    // Direct Java HTTP test — used for media service and non-Oracle URLs
+    // Does NOT go through Oracle UTL_HTTP — avoids ORA-29273
+    private void testUrlDirect(int row, String name, String url) {
+        try {
+            long start = System.currentTimeMillis();
+            java.net.HttpURLConnection conn =
+                (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            int statusCode = conn.getResponseCode();
+            long elapsed = System.currentTimeMillis() - start;
+            String status  = String.valueOf(statusCode);
+            String testedAt = new SimpleDateFormat("HH:mm:ss").format(new Date());
+            String elapsedSec = String.format("%.2f", elapsed / 1000.0);
+
+            mdlUrls.setValueAt(status,   row, 2);
+            mdlUrls.setValueAt(testedAt, row, 3);
+
+            String detail =
+                "URL    : " + url       + "\n" +
+                "Status : " + status    + "\n" +
+                "Time   : " + elapsedSec + " sec\n" +
+                "Tested : " + testedAt  + "\n" +
+                "Mode   : Direct Java HTTP (not Oracle UTL_HTTP)";
+            taDetail.setText(detail);
+
+            boolean ok = statusCode == 200 || statusCode == 201 || statusCode == 204;
+            app.setStatus(name + " -- HTTP " + status + " (" + elapsedSec + " sec)",
+                ok ? CrmAdminTool.CLR_SUCCESS : CrmAdminTool.CLR_WARN);
+
+            CrmAdminTool.LOGGER.log(ok ? "SUCCESS" : "WARN",
+                "URL TEST DIRECT [" + name + "] HTTP " + status + " " + elapsedSec + "sec");
+
+        } catch (Exception ex) {
+            mdlUrls.setValueAt("ERROR", row, 2);
+            app.setStatus("URL test error: " + ex.getMessage(), CrmAdminTool.CLR_ERROR);
+            taDetail.setText("URL    : " + url + "\nError  : " + ex.getMessage()
+                + "\nMode   : Direct Java HTTP");
         }
     }
 
