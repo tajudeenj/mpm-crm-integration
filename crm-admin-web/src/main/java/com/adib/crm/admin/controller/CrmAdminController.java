@@ -240,6 +240,11 @@ public class CrmAdminController {
         return ok(svc.testToken(body.get("credCode")));
     }
 
+    @PostMapping("/health/test-push")
+    public ResponseEntity<?> testPush() {
+        return ok(svc.testPush());
+    }
+
     // ── DB CONNECTIVITY CHECK ─────────────────────────────────────────────────
     @GetMapping("/ping")
     public ResponseEntity<?> ping() {

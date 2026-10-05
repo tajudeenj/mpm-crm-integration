@@ -487,6 +487,20 @@ public class CrmAdminService {
         return result;
     }
 
+    // ── TEST PUSH ─────────────────────────────────────────────────────────────
+    public Map<String, Object> testPush() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        try {
+            jdbc.update("BEGIN PKG_CRM_INTEGRATION.RUN_OUTBOUND_JOB; END;");
+            result.put("ok", true);
+            result.put("result", "RUN_OUTBOUND_JOB triggered — check Monitor tab for new records");
+        } catch (Exception ex) {
+            result.put("ok", false);
+            result.put("result", "ERROR: " + ex.getMessage());
+        }
+        return result;
+    }
+
     // ── PING ─────────────────────────────────────────────────────────────────
     public Map<String, Object> ping() {
         Map<String, Object> r = new LinkedHashMap<>();
