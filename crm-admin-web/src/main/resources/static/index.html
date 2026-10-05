@@ -88,6 +88,8 @@ tr.selected td { background: #1a3550; }
   <button class="tab-btn" onclick="showTab('monitor',this)">6. Monitor</button>
   <button class="tab-btn" onclick="showTab('scheduler',this)">8. Scheduler</button>
   <button class="tab-btn" onclick="showTab('health',this)">9. Health Check</button>
+  <button class="tab-btn" onclick="showTab('testpush',this)">10. Test Push</button>
+  <button class="tab-btn" onclick="showTab('scripts',this)">7. Script Download</button>
   <button class="tab-btn admin-only" id="tabUsers" onclick="showTab('users',this)" style="display:none">👤 Users</button>
 </div>
 
@@ -487,6 +489,66 @@ tr.selected td { background: #1a3550; }
   </div>
 </div>
 
+<!-- TAB 10: TEST PUSH -->
+<div id="tab-testpush" class="tab-panel">
+  <div class="card">
+    <h3>⚡ Test Push — Single Record to CRM via APIC</h3>
+    <div class="filter-row">
+      <label>Service:</label>
+      <select id="tp-service" style="width:220px"><option value="">-- Select Service --</option></select>
+      <label>Key Value:</label>
+      <input id="tp-keyValue" placeholder="e.g. BUILDING_ID value" style="width:180px">
+      <button class="btn-blue" onclick="testPushRecord()">⚡ Push to CRM</button>
+      <button class="btn-grey" onclick="testPushClear()">✖ Clear Results</button>
+    </div>
+    <small style="color:#888;font-size:11px;">Calls PKG_CRM_INTEGRATION.SEND_TO_APIC for a single record — use only with valid test data</small>
+  </div>
+  <div class="card">
+    <h3>Push Results</h3>
+    <div class="tbl-wrap" style="max-height:280px">
+      <table id="tpTable">
+        <thead><tr><th>Service</th><th>Key Value</th><th>Status</th><th>Response Time</th><th>Log ID</th><th>Pushed At</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" id="tpDetailCard" style="display:none">
+    <h3>Push Result Detail</h3>
+    <pre id="tpDetail" style="font-size:12px;color:#aaa;white-space:pre-wrap;padding:8px;background:#1a2840;border-radius:4px;"></pre>
+  </div>
+</div>
+
+<!-- TAB 7: SCRIPT DOWNLOAD -->
+<div id="tab-scripts" class="tab-panel">
+  <div class="card">
+    <h3>📄 Script Download — Generate Deployment Scripts</h3>
+    <div class="filter-row">
+      <label>Section:</label>
+      <select id="sc-section" style="width:300px">
+        <option value="all">All Scripts</option>
+        <option value="registry">Config Data (Registry + Mappings + Error Codes)</option>
+        <option value="scheduler">Scheduler Jobs</option>
+        <option value="watermark">Watermark Init</option>
+        <option value="users">App Users (INSERT statements)</option>
+        <option value="ddl">Table DDL (DBMS_METADATA query)</option>
+        <option value="sequences">Sequence DDL (DBMS_METADATA query)</option>
+      </select>
+      <button class="btn-blue" onclick="scriptGenerate()">⚙ Generate</button>
+      <button class="btn-green" onclick="scriptDownload()">⬇ Download .sql</button>
+      <button class="btn-grey" onclick="scriptClear()">✖ Clear</button>
+    </div>
+    <small style="color:#888;font-size:11px;">Generate scripts to deploy configuration to SIT / UAT / PROD</small>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3>Generated Script</h3>
+      <span id="scLineCount" style="font-size:11px;color:#888;"></span>
+    </div>
+    <textarea id="scOutput" readonly
+      style="width:100%;height:420px;background:#0d1b2a;color:#a8d8a8;font-family:'Courier New',monospace;font-size:12px;border:1px solid #2c3e50;border-radius:4px;padding:10px;resize:vertical;"></textarea>
+  </div>
+</div>
+
 </div><!-- end #content -->
 <div id="statusBar">Ready</div>
 
@@ -558,6 +620,8 @@ function showTab(name, btn) {
     monitor: ()=>{monDashRefresh();loadServiceNames();},
     scheduler: schRefresh,
     health: healthRefresh,
+    testpush: tpLoadServices,
+    scripts: ()=>{},
     users: ()=>{userRefresh();loadSvcChips();}
   };
   if (loaders[name]) loaders[name]();
@@ -796,6 +860,94 @@ async function userResetPwd() {
     const msg = await api('POST', '/users/' + sel.data[0] + '/reset-password', {newPassword: pwd});
     setStatus(msg, 'ok');
   } catch(e) {}
+}
+
+// ── TAB 10: TEST PUSH ─────────────────────────────────────────────────────────
+async function tpLoadServices() {
+  try {
+    const names = await api('GET', '/monitor/service-names');
+    const sel = document.getElementById('tp-service');
+    sel.innerHTML = '<option value="">-- Select Service --</option>' +
+      names.map(n => `<option>${n}</option>`).join('');
+  } catch(e) {}
+}
+
+async function testPushRecord() {
+  const svc = document.getElementById('tp-service').value;
+  const key = document.getElementById('tp-keyValue').value.trim();
+  if (!svc) { setStatus('Select a service', 'warn'); return; }
+  if (!key) { setStatus('Enter a key value', 'warn'); return; }
+  if (!confirm('Push to CRM?\n\nService  : ' + svc + '\nKey Value: ' + key + '\n\nThis sends a LIVE push to CRM via APIC.\nUse only with valid test data.')) return;
+  setStatus('Pushing ' + svc + ' key=' + key + '...', '');
+  const start = Date.now();
+  try {
+    const d = await api('POST', '/testpush/push', {serviceName: svc, keyValue: key});
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    const pushedAt = new Date().toLocaleTimeString();
+    const ok = d.logId > 0;
+    const detail = 'Service    : ' + svc + '\nKey Value  : ' + key +
+      '\nRegistry ID: ' + d.registryId + '\nLog ID     : ' + d.logId +
+      '\nTime       : ' + elapsed + ' sec\nPushed At  : ' + pushedAt +
+      '\n\nCheck Monitor tab for final status.';
+    const tb = document.querySelector('#tpTable tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${svc}</td><td>${key}</td>
+      <td><span class="badge badge-${ok?'green':'red'}">${ok?'SENT':'ERROR'}</span></td>
+      <td>${elapsed}s</td><td>${d.logId||'--'}</td><td>${pushedAt}</td>`;
+    tr.onclick = () => {
+      document.getElementById('tpDetail').textContent = detail;
+      document.getElementById('tpDetailCard').style.display = 'block';
+    };
+    tb.insertBefore(tr, tb.firstChild);
+    document.getElementById('tpDetail').textContent = detail;
+    document.getElementById('tpDetailCard').style.display = 'block';
+    setStatus(svc + ' pushed — Log ID: ' + d.logId + ' (' + elapsed + 's) — check Monitor', ok ? 'ok' : 'err');
+    if (ok) alert('Push submitted!\n\nService  : ' + svc + '\nKey Value: ' + key + '\nLog ID   : ' + d.logId + '\n\nCheck Monitor tab for final status.');
+  } catch(e) {
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    const tb = document.querySelector('#tpTable tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${svc}</td><td>${key}</td><td><span class="badge badge-red">ERROR</span></td><td>${elapsed}s</td><td>--</td><td>${new Date().toLocaleTimeString()}</td>`;
+    tb.insertBefore(tr, tb.firstChild);
+  }
+}
+
+function testPushClear() {
+  document.querySelector('#tpTable tbody').innerHTML = '';
+  document.getElementById('tpDetailCard').style.display = 'none';
+  document.getElementById('tpDetail').textContent = '';
+}
+
+// ── TAB 7: SCRIPT DOWNLOAD ────────────────────────────────────────────────────
+async function scriptGenerate() {
+  const section = document.getElementById('sc-section').value;
+  setStatus('Generating script...');
+  try {
+    const d = await api('GET', '/scripts/generate?section=' + section);
+    document.getElementById('scOutput').value = d.script || '';
+    const lines = (d.script || '').split('\n').length;
+    document.getElementById('scLineCount').textContent = lines + ' lines';
+    setStatus('Script generated: ' + lines + ' lines', 'ok');
+  } catch(e) {}
+}
+
+function scriptDownload() {
+  const content = document.getElementById('scOutput').value;
+  if (!content.trim()) { setStatus('Generate script first', 'warn'); return; }
+  const section = document.getElementById('sc-section').value;
+  const ts = new Date().toISOString().replace(/[-T:.Z]/g,'').substring(0,14);
+  const filename = 'CRM_Script_' + section + '_' + ts + '.sql';
+  const blob = new Blob([content], {type: 'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setStatus('Downloaded: ' + filename, 'ok');
+}
+
+function scriptClear() {
+  document.getElementById('scOutput').value = '';
+  document.getElementById('scLineCount').textContent = '';
 }
 
 // ── STARTUP ───────────────────────────────────────────────────────────────────
