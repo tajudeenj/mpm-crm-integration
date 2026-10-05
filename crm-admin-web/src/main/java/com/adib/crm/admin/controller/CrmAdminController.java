@@ -224,6 +224,11 @@ public class CrmAdminController {
         return ok(svc.jobHistory(jobName));
     }
 
+    @PostMapping("/scheduler/create")
+    public ResponseEntity<?> createJob(@RequestBody Map<String, String> body) {
+        return ok(svc.createJob(body));
+    }
+
     // ── HEALTH CHECK ─────────────────────────────────────────────────────────
     @GetMapping("/health/urls")
     public ResponseEntity<?> listHealthUrls() {

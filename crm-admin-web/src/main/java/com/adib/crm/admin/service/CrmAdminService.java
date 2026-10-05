@@ -428,6 +428,34 @@ public class CrmAdminService {
         jdbc.update("BEGIN DBMS_SCHEDULER.STOP_JOB(?,TRUE); END;", jobName);
     }
 
+    public Map<String, Object> createJob(Map<String, String> b) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        String jobName  = b.get("jobName");
+        String interval = b.getOrDefault("interval", "FREQ=DAILY;BYHOUR=6;BYMINUTE=0;BYSECOND=0");
+        String proc     = b.getOrDefault("proc", "PKG_CRM_INTEGRATION.RUN_OUTBOUND_JOB");
+        String enabled  = b.getOrDefault("enabled", "N");
+        String comment  = b.getOrDefault("comment", "Created via CRM Admin Web");
+        String action   = "BEGIN " + proc + "; END;";
+        boolean enable  = "Y".equals(enabled);
+        try {
+            jdbc.update(
+                "BEGIN DBMS_SCHEDULER.CREATE_JOB(" +
+                "    job_name        => ?," +
+                "    job_type        => 'PLSQL_BLOCK'," +
+                "    job_action      => ?," +
+                "    repeat_interval => ?," +
+                "    enabled         => " + (enable ? "TRUE" : "FALSE") + "," +
+                "    comments        => ?); END;",
+                jobName, action, interval, comment);
+            result.put("ok", true);
+            result.put("result", "Job created: " + jobName + (enable ? " (enabled)" : " (disabled)"));
+        } catch (Exception ex) {
+            result.put("ok", false);
+            result.put("result", "ERROR: " + ex.getMessage());
+        }
+        return result;
+    }
+
     public List<Map<String, Object>> jobHistory(String jobName) {
         return jdbc.queryForList(
             "SELECT TO_CHAR(LOG_ID),JOB_NAME,STATUS," +
