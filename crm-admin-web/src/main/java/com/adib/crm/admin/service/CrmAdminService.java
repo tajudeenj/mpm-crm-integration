@@ -296,7 +296,7 @@ public class CrmAdminService {
 
     public List<Map<String, Object>> mainReport(String svc, String status,
                                                   String from, String to, String recId) {
-        return jdbc.queryForList(
+        StringBuilder sql = new StringBuilder(
             "SELECT L.LOG_ID,R.SERVICE_NAME,L.SOURCE_RECORD_ID,L.FINAL_STATUS," +
             "DBMS_LOB.SUBSTR(L.REQUEST_PAYLOAD,2000,1) AS DATA_SENT," +
             "SUBSTR(L.CALLBACK_VALID_ERRORS,1,300) AS FAILED_FIELDS," +
@@ -305,13 +305,26 @@ public class CrmAdminService {
             "L.CRM_REFERENCE_NO,TO_CHAR(L.SENT_DATE,'DD-MON-YY HH24:MI') AS SENT_DATE," +
             "TO_CHAR(L.CALLBACK_DATE,'DD-MON-YY HH24:MI') AS CALLBACK_DATE," +
             "L.RETRY_COUNT||'/'||R.MAX_RETRY_COUNT AS RETRY,NVL(L.MANUAL_RETRY,'N') AS MANUAL_RETRY " +
-            "FROM CRM_MPM_CRM_INTEGRATION_LOG L JOIN CRM_MPM_API_REGISTRY R ON R.REGISTRY_ID=L.REGISTRY_ID " +
-            "WHERE (? IS NULL OR R.SERVICE_NAME=?) AND (? IS NULL OR L.FINAL_STATUS=?) " +
-            "AND (? IS NULL OR L.SENT_DATE>=TO_DATE(?,'DD-MON-YY')) " +
-            "AND (? IS NULL OR L.SENT_DATE<=TO_DATE(?,'DD-MON-YY')+1) " +
-            "AND (? IS NULL OR L.SOURCE_RECORD_ID LIKE '%'||?||'%') " +
-            "ORDER BY L.LOG_ID DESC FETCH FIRST 500 ROWS ONLY",
-            n(svc),n(svc),n(status),n(status),n(from),n(from),n(to),n(to),n(recId),n(recId));
+            "FROM CRM_MPM_CRM_INTEGRATION_LOG L " +
+            "JOIN CRM_MPM_API_REGISTRY R ON R.REGISTRY_ID=L.REGISTRY_ID WHERE 1=1");
+        java.util.List<Object> params = new java.util.ArrayList<>();
+        if (svc != null && !svc.isEmpty()) {
+            sql.append(" AND R.SERVICE_NAME=?"); params.add(svc);
+        }
+        if (status != null && !status.isEmpty()) {
+            sql.append(" AND L.FINAL_STATUS=?"); params.add(status);
+        }
+        if (from != null && !from.isEmpty()) {
+            sql.append(" AND L.SENT_DATE>=TO_DATE(?,'DD-MON-YY')"); params.add(from);
+        }
+        if (to != null && !to.isEmpty()) {
+            sql.append(" AND L.SENT_DATE<=TO_DATE(?,'DD-MON-YY')+1"); params.add(to);
+        }
+        if (recId != null && !recId.isEmpty()) {
+            sql.append(" AND L.SOURCE_RECORD_ID LIKE '%'||?||'%'"); params.add(recId);
+        }
+        sql.append(" ORDER BY L.LOG_ID DESC FETCH FIRST 500 ROWS ONLY");
+        return jdbc.queryForList(sql.toString(), params.toArray());
     }
 
     public List<Map<String, Object>> actionNeeded() {
@@ -365,18 +378,29 @@ public class CrmAdminService {
 
     public List<Map<String, Object>> callbackAudit(String svc, String statusCode,
                                                      String from, String to) {
-        return jdbc.queryForList(
+        // Build dynamic query to avoid ORA-17004 with NULL TIMESTAMP binds
+        StringBuilder sql = new StringBuilder(
             "SELECT TO_CHAR(A.AUDIT_ID) AS AUDIT_ID," +
             "TO_CHAR(A.RECEIVED_AT,'DD-MON-YY HH24:MI:SS') AS RECEIVED_AT," +
             "A.SERVICE_NAME,A.X_UNIQUE_ID,A.CHANNEL_ID,A.REQUEST_ID," +
             "A.STATUS_CODE_SENT,SUBSTR(A.DESCRIPTION_SENT,1,300) AS DESCRIPTION_SENT," +
             "SUBSTR(A.RAW_PAYLOAD,1,200) AS RAW_PAYLOAD " +
-            "FROM CRM_MPM_CALLBACK_AUDIT_LOG A " +
-            "WHERE (? IS NULL OR A.SERVICE_NAME=?) AND (? IS NULL OR A.STATUS_CODE_SENT=?) " +
-            "AND (? IS NULL OR A.RECEIVED_AT>=TO_TIMESTAMP(?,'DD-MON-YY')) " +
-            "AND (? IS NULL OR A.RECEIVED_AT<=TO_TIMESTAMP(?,'DD-MON-YY')+1) " +
-            "ORDER BY A.AUDIT_ID DESC FETCH FIRST 500 ROWS ONLY",
-            n(svc),n(svc),n(statusCode),n(statusCode),n(from),n(from),n(to),n(to));
+            "FROM CRM_MPM_CALLBACK_AUDIT_LOG A WHERE 1=1");
+        java.util.List<Object> params = new java.util.ArrayList<>();
+        if (svc != null && !svc.isEmpty()) {
+            sql.append(" AND A.SERVICE_NAME=?"); params.add(svc);
+        }
+        if (statusCode != null && !statusCode.isEmpty()) {
+            sql.append(" AND A.STATUS_CODE_SENT=?"); params.add(statusCode);
+        }
+        if (from != null && !from.isEmpty()) {
+            sql.append(" AND A.RECEIVED_AT>=TO_TIMESTAMP(?,'DD-MON-YY')"); params.add(from);
+        }
+        if (to != null && !to.isEmpty()) {
+            sql.append(" AND A.RECEIVED_AT<=TO_TIMESTAMP(?,'DD-MON-YY')+1"); params.add(to);
+        }
+        sql.append(" ORDER BY A.AUDIT_ID DESC FETCH FIRST 500 ROWS ONLY");
+        return jdbc.queryForList(sql.toString(), params.toArray());
     }
 
     public int manualRetry(String logId) {
