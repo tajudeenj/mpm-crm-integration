@@ -3,220 +3,422 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRM Admin Tool — ADIB MPM</title>
+<title>CRM Admin — ADIB MPM Integration</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; font-size: 13px; background: #1e2a38; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-#header { background: #0d1b2a; padding: 8px 16px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #2980b9; }
-#header h1 { font-size: 15px; color: #2980b9; font-weight: bold; flex:1; }
-#userInfo { font-size: 12px; color: #aaa; }
-#dbStatus { font-size: 12px; color: #888; }
-#dbStatus.ok { color: #27ae60; } #dbStatus.err { color: #e74c3c; }
-#tabBar { display: flex; background: #162030; border-bottom: 1px solid #2c3e50; overflow-x: auto; flex-shrink: 0; }
-.tab-btn { padding: 8px 14px; border: none; background: none; color: #888; cursor: pointer; font-size: 12px; white-space: nowrap; border-bottom: 3px solid transparent; }
-.tab-btn:hover { color: #ccc; background: #1a2840; }
-.tab-btn.active { color: #2980b9; border-bottom-color: #2980b9; background: #1a2840; }
-.tab-btn.admin-only { border-left: 2px solid #e67e22; }
-#statusBar { background: #0d1b2a; padding: 4px 12px; font-size: 12px; color: #888; border-top: 1px solid #2c3e50; flex-shrink: 0; }
-#statusBar.ok { color: #27ae60; } #statusBar.warn { color: #f39c12; } #statusBar.err { color: #e74c3c; }
-#content { flex: 1; overflow: auto; padding: 12px; }
-.tab-panel { display: none; } .tab-panel.active { display: block; }
-.card { background: #243447; border-radius: 6px; padding: 12px; margin-bottom: 12px; border: 1px solid #2c3e50; }
-.card h3 { color: #2980b9; font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid #2c3e50; padding-bottom: 6px; }
-.form-grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 8px; align-items: center; max-width: 700px; }
-.form-grid label { color: #aaa; font-size: 12px; text-align: right; }
-.form-grid input, .form-grid select { background: #1a2840; border: 1px solid #2c3e50; color: #e0e0e0; padding: 5px 8px; border-radius: 4px; font-size: 12px; width: 100%; }
-.form-grid input:focus, .form-grid select:focus { outline: 1px solid #2980b9; border-color: #2980b9; }
-.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-button { padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
-.btn-blue { background: #2980b9; color: white; } .btn-blue:hover { background: #3498db; }
-.btn-green { background: #27ae60; color: white; } .btn-green:hover { background: #2ecc71; }
-.btn-orange { background: #e67e22; color: white; } .btn-orange:hover { background: #f39c12; }
-.btn-red { background: #c0392b; color: white; } .btn-red:hover { background: #e74c3c; }
-.btn-grey { background: #5d6d7e; color: white; } .btn-grey:hover { background: #7f8c8d; }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th { background: #162030; color: #2980b9; padding: 6px 8px; text-align: left; position: sticky; top: 0; white-space: nowrap; }
-td { padding: 5px 8px; border-bottom: 1px solid #1a2840; vertical-align: top; }
-tr:hover td { background: #1a2840; }
-tr.selected td { background: #1a3550; }
-.tbl-wrap { overflow: auto; max-height: 340px; border: 1px solid #2c3e50; border-radius: 4px; }
-.badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; }
-.badge-green { background: #1a4731; color: #27ae60; }
-.badge-red { background: #4a1a1a; color: #e74c3c; }
-.badge-orange { background: #4a3a1a; color: #f39c12; }
-.badge-blue { background: #1a3050; color: #2980b9; }
-.badge-grey { background: #2c3e50; color: #888; }
-.badge-purple { background: #3a1a4a; color: #9b59b6; }
-.split { display: grid; grid-template-columns: 380px 1fr; gap: 12px; }
-.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
-.dash-card { background: #1a2840; border-radius: 6px; padding: 10px; text-align: center; border: 1px solid #2c3e50; }
-.dash-card .num { font-size: 28px; font-weight: bold; color: #2980b9; }
-.dash-card .lbl { font-size: 11px; color: #888; margin-top: 4px; }
-.dash-card.warn .num { color: #f39c12; } .dash-card.danger .num { color: #e74c3c; }
-.sub-tabs { display: flex; gap: 2px; margin-bottom: 10px; }
-.sub-tab { padding: 5px 12px; background: #162030; border: 1px solid #2c3e50; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 12px; color: #888; }
-.sub-tab.active { background: #243447; color: #2980b9; border-bottom-color: #243447; }
-.sub-panel { display: none; } .sub-panel.active { display: block; }
-.filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-.filter-row input, .filter-row select { background: #1a2840; border: 1px solid #2c3e50; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
-.filter-row label { font-size: 12px; color: #aaa; }
-.svc-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 160px; overflow-y: auto; padding: 4px; }
-.svc-chip { padding: 3px 10px; background: #1a3050; border: 1px solid #2980b9; border-radius: 12px; font-size: 11px; cursor: pointer; color: #aaa; }
-.svc-chip.assigned { background: #1a4731; border-color: #27ae60; color: #27ae60; }
-.role-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
-.role-ADMIN { background: #3a1a4a; color: #9b59b6; }
-.role-VIEWER { background: #1a3050; color: #2980b9; }
-.role-OPERATOR { background: #4a3a1a; color: #f39c12; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#141e2b;color:#d0d8e4;height:100vh;display:flex;flex-direction:column}
+/* HEADER */
+#header{background:linear-gradient(90deg,#0a1628,#0d2040);padding:0 16px;height:46px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #1e4080;flex-shrink:0}
+#header h1{font-size:14px;font-weight:700;color:#4a9eff;flex:1;letter-spacing:.3px}
+#headerRight{display:flex;align-items:center;gap:14px}
+#dbStatus{font-size:11px;color:#666;padding:3px 8px;border-radius:10px;border:1px solid #2c3e50}
+#dbStatus.ok{color:#27ae60;border-color:#1a4731;background:#0a1f10}
+#dbStatus.err{color:#e74c3c;border-color:#4a1a1a;background:#1a0a0a}
+#userBadge{font-size:11px;color:#aaa;background:#1a2840;padding:3px 10px;border-radius:10px;border:1px solid #2c3e50}
+#logoutBtn{font-size:11px;color:#e74c3c;text-decoration:none;padding:3px 10px;border:1px solid #4a1a1a;border-radius:10px;background:#1a0a0a}
+#logoutBtn:hover{background:#2a1010}
+/* TAB BAR */
+#tabBar{display:flex;background:#0d1624;border-bottom:1px solid #1e2d40;overflow-x:auto;flex-shrink:0;scrollbar-width:thin}
+.tab-btn{padding:10px 16px;border:none;background:none;color:#5a7090;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;border-bottom:3px solid transparent;transition:all .15s;letter-spacing:.2px}
+.tab-btn:hover{color:#8ab4d4;background:#111e2d}
+.tab-btn.active{color:#4a9eff;border-bottom-color:#4a9eff;background:#111e2d}
+.tab-btn.admin-tab{position:relative}
+.tab-btn.admin-tab::after{content:'A';position:absolute;top:4px;right:4px;font-size:8px;color:#9b59b6;font-weight:bold}
+/* STATUS BAR */
+#statusBar{background:#0a1020;padding:4px 14px;font-size:11px;color:#5a7090;border-top:1px solid #1e2d40;flex-shrink:0;display:flex;align-items:center;gap:8px}
+#statusBar.ok{color:#27ae60}#statusBar.warn{color:#f39c12}#statusBar.err{color:#e74c3c}
+#statusBar::before{content:'●';font-size:8px}
+/* CONTENT */
+#content{flex:1;overflow:auto;padding:14px;background:#141e2b}
+.tab-panel{display:none}.tab-panel.active{display:block}
+/* CARDS */
+.card{background:#1a2638;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #1e3050;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e3050}
+.card-title{color:#4a9eff;font-size:13px;font-weight:700;letter-spacing:.3px;display:flex;align-items:center;gap:6px}
+.card-title .icon{font-size:14px}
+/* FORMS */
+.form-grid{display:grid;grid-template-columns:150px 1fr;gap:7px 10px;align-items:center;max-width:680px}
+.form-grid label{color:#7a9ab8;font-size:12px;text-align:right;padding-right:4px}
+.form-grid input,.form-grid select,.form-grid textarea{background:#0d1828;border:1px solid #1e3050;color:#d0d8e4;padding:6px 10px;border-radius:5px;font-size:12px;width:100%;transition:border-color .15s}
+.form-grid input:focus,.form-grid select:focus{outline:none;border-color:#4a9eff;box-shadow:0 0 0 2px rgba(74,158,255,.1)}
+.form-grid .required{color:#e74c3c;margin-left:2px}
+.form-group{margin-bottom:8px}
+.form-label{color:#7a9ab8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:block}
+.form-input{background:#0d1828;border:1px solid #1e3050;color:#d0d8e4;padding:6px 10px;border-radius:5px;font-size:12px;width:100%;transition:border-color .15s}
+.form-input:focus{outline:none;border-color:#4a9eff;box-shadow:0 0 0 2px rgba(74,158,255,.1)}
+/* BUTTONS */
+.btn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+button{padding:6px 14px;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;letter-spacing:.2px}
+.btn-primary{background:#1e4080;color:#4a9eff;border:1px solid #2a5090}
+.btn-primary:hover{background:#2a5090;color:#6ab4ff}
+.btn-success{background:#1a4731;color:#27ae60;border:1px solid #1e5a38}
+.btn-success:hover{background:#1e5a38;color:#2ecc71}
+.btn-warning{background:#4a3010;color:#f39c12;border:1px solid #5a4018}
+.btn-warning:hover{background:#5a4018;color:#f5b942}
+.btn-danger{background:#4a1010;color:#e74c3c;border:1px solid #5a1818}
+.btn-danger:hover{background:#5a1818;color:#ff6b6b}
+.btn-muted{background:#1a2638;color:#7a9ab8;border:1px solid #1e3050}
+.btn-muted:hover{background:#1e2e44;color:#9ab8d4}
+.btn-purple{background:#2a1a40;color:#9b59b6;border:1px solid #3a2050}
+.btn-purple:hover{background:#3a2050;color:#b06fd8}
+button:disabled{opacity:.35;cursor:not-allowed}
+/* TABLES */
+.tbl-wrap{overflow:auto;border:1px solid #1e3050;border-radius:6px;max-height:320px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead{position:sticky;top:0;z-index:1}
+th{background:#0d1828;color:#4a9eff;padding:8px 10px;text-align:left;white-space:nowrap;font-weight:600;letter-spacing:.2px;border-bottom:2px solid #1e3050}
+td{padding:6px 10px;border-bottom:1px solid #131e2c;vertical-align:middle}
+tr:hover td{background:#111e2d}
+tr.selected td{background:#0d2040;border-left:3px solid #4a9eff}
+td.mono{font-family:'Courier New',monospace;font-size:11px}
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;letter-spacing:.2px}
+.b-green{background:#0a1f10;color:#27ae60;border:1px solid #1a4731}
+.b-red{background:#1a0808;color:#e74c3c;border:1px solid #4a1010}
+.b-orange{background:#1a1000;color:#f39c12;border:1px solid #4a3010}
+.b-blue{background:#0a1828;color:#4a9eff;border:1px solid #1a3860}
+.b-grey{background:#141e2c;color:#7a9ab8;border:1px solid #1e3050}
+.b-purple{background:#1a0a28;color:#9b59b6;border:1px solid #2a1a40}
+/* LAYOUTS */
+.split{display:grid;grid-template-columns:400px 1fr;gap:14px}
+.split-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+/* DASHBOARD */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi-card{background:#1a2638;border-radius:8px;padding:14px;text-align:center;border:1px solid #1e3050;transition:border-color .2s}
+.kpi-card:hover{border-color:#2a4060}
+.kpi-num{font-size:32px;font-weight:700;color:#4a9eff;line-height:1.1}
+.kpi-lbl{font-size:11px;color:#5a7090;margin-top:4px;letter-spacing:.3px;text-transform:uppercase}
+.kpi-card.warn .kpi-num{color:#f39c12}
+.kpi-card.danger .kpi-num{color:#e74c3c}
+.kpi-card.success .kpi-num{color:#27ae60}
+/* SUB TABS */
+.sub-tabs{display:flex;gap:2px;margin-bottom:12px;background:#0d1624;border-radius:6px;padding:4px;width:fit-content}
+.sub-tab{padding:6px 14px;background:none;border:none;border-radius:4px;cursor:pointer;font-size:12px;color:#5a7090;font-weight:600;transition:all .15s}
+.sub-tab:hover{color:#8ab4d4}
+.sub-tab.active{background:#1a2638;color:#4a9eff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.sub-panel{display:none}.sub-panel.active{display:block}
+/* FILTER ROW */
+.filter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1624;border-radius:6px;border:1px solid #1e2d40}
+.filter-row label{font-size:11px;color:#5a7090;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.filter-row input,.filter-row select{background:#141e2b;border:1px solid #1e3050;color:#d0d8e4;padding:5px 10px;border-radius:5px;font-size:12px}
+/* SERVICE CHIPS */
+.svc-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding:8px;background:#0d1828;border-radius:6px;border:1px solid #1e3050;min-height:40px;max-height:130px;overflow-y:auto}
+.svc-chip{padding:4px 12px;background:#141e2b;border:1px solid #1e3050;border-radius:12px;font-size:11px;cursor:pointer;color:#7a9ab8;transition:all .15s;user-select:none}
+.svc-chip:hover{border-color:#4a9eff;color:#4a9eff}
+.svc-chip.assigned{background:#0a1828;border-color:#27ae60;color:#27ae60}
+/* WIZARD */
+.wizard-wrap{background:#1a2638;border-radius:8px;border:1px solid #1e3050;overflow:hidden}
+.wizard-steps{display:flex;background:#0d1624;border-bottom:1px solid #1e3050}
+.wstep{flex:1;padding:12px 8px;text-align:center;font-size:11px;font-weight:700;color:#3a5070;letter-spacing:.3px;position:relative;cursor:default;transition:all .2s}
+.wstep.done{color:#27ae60;background:#0a1a10}
+.wstep.active{color:#4a9eff;background:#0a1828;border-bottom:3px solid #4a9eff}
+.wstep .wstep-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:2px solid currentColor;font-size:11px;margin-bottom:4px}
+.wstep.done .wstep-num{background:#1a4731;border-color:#27ae60}
+.wstep.active .wstep-num{background:#0a1828;border-color:#4a9eff}
+.wizard-body{padding:16px}
+.wizard-nav{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d1624;border-top:1px solid #1e3050}
+.wizard-nav-info{font-size:12px;color:#5a7090}
+/* INLINE EDIT TABLE */
+.inline-table td input,.inline-table td select{background:#0d1828;border:1px solid #1e3050;color:#d0d8e4;padding:3px 6px;border-radius:3px;font-size:11px;width:100%}
+/* ROLE BADGES */
+.role-ADMIN{background:#1a0a28;color:#9b59b6;border:1px solid #2a1a40;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.role-OPERATOR{background:#1a1000;color:#f39c12;border:1px solid #4a3010;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.role-VIEWER{background:#0a1828;color:#4a9eff;border:1px solid #1a3860;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+/* ALERTS */
+.alert{padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:10px;border-left:4px solid}
+.alert-info{background:#0a1828;border-color:#4a9eff;color:#8ab4d4}
+.alert-warn{background:#1a1000;border-color:#f39c12;color:#c8940e}
+.alert-success{background:#0a1f10;border-color:#27ae60;color:#1e9e50}
+/* SCROLLBAR */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#0d1624}
+::-webkit-scrollbar-thumb{background:#1e3050;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#2a4060}
+/* CODE AREA */
+.code-area{width:100%;background:#0a1020;color:#a8d8a8;font-family:'Courier New',monospace;font-size:12px;border:1px solid #1e3050;border-radius:6px;padding:12px;resize:vertical;line-height:1.5}
 </style>
 </head>
 <body>
 
 <div id="header">
-  <h1>⚙ CRM Integration Admin Tool — ADIB MPM</h1>
-  <span id="userInfo"></span>
-  <span id="dbStatus">● Connecting...</span>
-  <a href="/logout" style="color:#e74c3c;font-size:12px;text-decoration:none;">⏻ Logout</a>
+  <h1>⚙ CRM Integration Admin — ADIB MPM Properties</h1>
+  <div id="headerRight">
+    <span id="dbStatus">● Connecting...</span>
+    <span id="userBadge">Loading...</span>
+    <a href="/logout" id="logoutBtn">⏻ Logout</a>
+  </div>
 </div>
 
 <div id="tabBar">
-  <button class="tab-btn active" onclick="showTab('credentials',this)">1. Credentials</button>
-  <button class="tab-btn" onclick="showTab('registry',this)">2. Service Registry</button>
-  <button class="tab-btn" onclick="showTab('mappings',this)">3. Field Mappings</button>
-  <button class="tab-btn" onclick="showTab('watermark',this)">4. Watermark</button>
-  <button class="tab-btn" onclick="showTab('errorcodes',this)">5. Error Codes</button>
-  <button class="tab-btn" onclick="showTab('monitor',this)">6. Monitor</button>
-  <button class="tab-btn" onclick="showTab('scheduler',this)">8. Scheduler</button>
-  <button class="tab-btn" onclick="showTab('health',this)">9. Health Check</button>
-  <button class="tab-btn" onclick="showTab('testpush',this)">10. Test Push</button>
-  <button class="tab-btn" onclick="showTab('scripts',this)">7. Script Download</button>
-  <button class="tab-btn admin-only" id="tabUsers" onclick="showTab('users',this)" style="display:none">👤 Users</button>
+  <button class="tab-btn active" onclick="showTab('credentials',this)">🔑 Credentials</button>
+  <button class="tab-btn" onclick="showTab('registry',this)">📋 Service Registry</button>
+  <button class="tab-btn" onclick="showTab('mappings',this)">🔗 Field Mappings</button>
+  <button class="tab-btn" onclick="showTab('watermark',this)">💧 Watermark</button>
+  <button class="tab-btn" onclick="showTab('errorcodes',this)">⚠ Error Codes</button>
+  <button class="tab-btn" onclick="showTab('monitor',this)">📊 Monitor</button>
+  <button class="tab-btn" onclick="showTab('scripts',this)">📄 Script Download</button>
+  <button class="tab-btn" onclick="showTab('scheduler',this)">⏰ Scheduler</button>
+  <button class="tab-btn" onclick="showTab('health',this)">🩺 Health Check</button>
+  <button class="tab-btn" onclick="showTab('testpush',this)">⚡ Test Push</button>
+  <button class="tab-btn admin-tab" id="tabUsers" onclick="showTab('users',this)" style="display:none">👤 Users</button>
 </div>
 
 <div id="content">
 
-<!-- TAB 1: CREDENTIALS -->
+<!-- ═══════════════════════════════════════════════════════════ TAB 1: CREDENTIALS -->
 <div id="tab-credentials" class="tab-panel active">
   <div class="split">
     <div class="card">
-      <h3>Credential Details</h3>
-      <div class="form-grid">
-        <label>Cred Code *</label><input id="c-credCode" placeholder="APIC_PXRM">
-        <label>Token URL *</label><input id="c-tokenUrl">
-        <label>Client ID *</label><input id="c-clientId">
-        <label>Client Secret *</label><input id="c-secret" type="password">
-        <label>Scope</label><input id="c-scope">
-        <label>Grant Type</label><input id="c-grantType" value="client_credentials">
-        <label>Wallet Path</label><input id="c-walletPath">
-        <label>Wallet Password</label><input id="c-walletPwd" type="password">
-        <label>Is Active</label><select id="c-isActive"><option value="Y">Y</option><option value="N">N</option></select>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🔑</span> Credential Details</div>
+        <span style="font-size:11px;color:#5a7090">AES-256 encrypted storage</span>
       </div>
+      <div class="form-grid">
+        <label>Cred Code <span class="required">*</span></label><input id="c-credCode" placeholder="e.g. APIC_PXRM">
+        <label>Token URL <span class="required">*</span></label><input id="c-tokenUrl" placeholder="https://apic.adib.ae/oauth/token">
+        <label>Client ID <span class="required">*</span></label><input id="c-clientId">
+        <label>Client Secret <span class="required">*</span></label><input id="c-secret" type="password" placeholder="Plain text — encrypted on save">
+        <label>Scope</label><input id="c-scope" placeholder="Optional">
+        <label>Grant Type</label><input id="c-grantType" value="client_credentials">
+        <label>Wallet Path</label><input id="c-walletPath" placeholder="file:/oracle/wallet/path">
+        <label>Wallet Password</label><input id="c-walletPwd" type="password">
+        <label>Is Active</label><select id="c-isActive"><option value="Y">✔ Active</option><option value="N">✖ Inactive</option></select>
+      </div>
+      <div class="alert alert-info" style="margin-top:10px">Client Secret is encrypted with AES-256 on save. Wallet password stored separately.</div>
       <div class="btn-row">
-        <button class="btn-blue" onclick="credSave()">💾 Save &amp; Encrypt</button>
-        <button class="btn-grey" onclick="credRefresh()">🔄 Refresh</button>
-        <button class="btn-grey" onclick="credLoadSelected()">📂 Load Selected</button>
-        <button class="btn-orange" onclick="credRotateSecret()">🔑 Rotate Secret</button>
-        <button class="btn-green" onclick="credTestSecret()">✔ Test Secret</button>
-        <button class="btn-orange" onclick="credRotateWallet()">🔒 Rotate Wallet</button>
-        <button class="btn-green" onclick="credTestWallet()">✔ Test Wallet</button>
-        <button class="btn-red" onclick="credClear()">✖ Clear</button>
+        <button class="btn-primary" onclick="credSave()">💾 Save &amp; Encrypt</button>
+        <button class="btn-muted" onclick="credLoadSelected()">📂 Load Selected</button>
+        <button class="btn-warning" onclick="credRotateSecret()">🔑 Rotate Secret</button>
+        <button class="btn-success" onclick="credTestSecret()">✔ Test Secret Decrypt</button>
+        <button class="btn-warning" onclick="credRotateWallet()">🔒 Rotate Wallet Pwd</button>
+        <button class="btn-success" onclick="credTestWallet()">✔ Test Wallet Pwd</button>
+        <button class="btn-muted" onclick="credRefresh()">🔄 Refresh</button>
+        <button class="btn-danger" onclick="credClear()">✖ Clear</button>
       </div>
     </div>
     <div class="card">
-      <h3>Stored Credentials</h3>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">📋</span> Stored Credentials</div>
+        <span style="font-size:11px;color:#5a7090">Double-click to load</span>
+      </div>
       <div class="tbl-wrap">
         <table id="credTable">
-          <thead><tr><th>Cred Code</th><th>Client ID</th><th>Token URL</th><th>Active</th><th>Secret Enc</th><th>Updated</th></tr></thead>
+          <thead><tr><th>Cred Code</th><th>Client ID</th><th>Token URL</th><th>Active</th><th>Secret</th><th>Updated</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <small style="color:#888;">Double-click row to load</small>
     </div>
   </div>
 </div>
 
-<!-- TAB 2: SERVICE REGISTRY -->
+<!-- ═══════════════════════════════════════════════════════ TAB 2: SERVICE REGISTRY -->
 <div id="tab-registry" class="tab-panel">
-  <div class="split">
-    <div class="card" style="overflow:auto;max-height:calc(100vh - 160px)">
-      <h3>Registry Details</h3>
-      <div class="form-grid">
-        <label>Service Name *</label><input id="r-serviceName">
-        <label>Entity Name</label><input id="r-entityName">
-        <label>Operation Type</label><select id="r-operationType"><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>BATCH</option></select>
-        <label>Source Type</label><select id="r-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
-        <label>Source View</label><input id="r-sourceView">
-        <label>Source Proc</label><input id="r-sourceProc">
-        <label>Filter Col</label><input id="r-sourceFilterCol">
-        <label>Key Col</label><input id="r-sourceKeyCol">
-        <label>JSON Mapping</label><input id="r-jsonMappingName">
-        <label>Record Type Hdr</label><input id="r-recordTypeHdr">
-        <label>Event Code Hdr</label><input id="r-eventCodeHdr">
-        <label>APIC Endpoint URL</label><input id="r-apicEndpointUrl">
-        <label>HTTP Method</label><select id="r-httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option><option>GET</option></select>
-        <label>API Version</label><input id="r-apicApiVersion">
-        <label>Callback Table</label><input id="r-callbackTargetTable">
-        <label>Callback Key Col</label><input id="r-callbackKeyCol">
-        <label>Callback Status Col</label><input id="r-callbackStatusCol">
-        <label>Callback Ref Col</label><input id="r-callbackRefCol">
-        <label>Post Callback Proc</label><input id="r-postCallbackProc">
-        <label>Cred Code</label><select id="r-credCode"></select>
-        <label>Exec Order</label><input id="r-executionOrder" value="99" type="number">
-        <label>Batch Size</label><input id="r-batchSize" value="100" type="number">
-        <label>Max Retry</label><input id="r-maxRetryCount" value="3" type="number">
-        <label>Retry Interval (min)</label><input id="r-retryIntervalMinutes" value="30" type="number">
-        <label>Timeout (min)</label><input id="r-timeoutMinutes" value="60" type="number">
-        <label>Is Active</label><select id="r-isActive"><option value="Y">Y</option><option value="N">N</option></select>
-      </div>
-      <div class="btn-row">
-        <button class="btn-blue" onclick="regSave()">💾 Save</button>
-        <button class="btn-grey" onclick="regRefresh()">🔄 Refresh</button>
-        <button class="btn-grey" onclick="regLoadSelected()">📂 Load Selected</button>
-        <button class="btn-green" onclick="regToggle('Y')">✔ Activate</button>
-        <button class="btn-red" onclick="regToggle('N')">✖ Deactivate</button>
-        <button class="btn-red" onclick="regClear()">✖ Clear</button>
-      </div>
-    </div>
+  <div class="sub-tabs">
+    <button class="sub-tab active" onclick="showSubTab('registry','list',this)">📋 Registry List</button>
+    <button class="sub-tab" onclick="showSubTab('registry','form',this)">✏ Edit Service</button>
+    <button class="sub-tab" onclick="showSubTab('registry','wizard',this)">🧙 New Service Wizard</button>
+  </div>
+
+  <div id="registry-list" class="sub-panel active">
     <div class="card">
-      <h3>Service Registry List</h3>
-      <div class="tbl-wrap">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">📋</span> Registered Services</div>
+        <div class="btn-row" style="margin:0">
+          <button class="btn-muted" onclick="regRefresh()">🔄 Refresh</button>
+          <button class="btn-success" onclick="regToggle('Y')">✔ Enable Selected</button>
+          <button class="btn-danger" onclick="regToggle('N')">✖ Disable Selected</button>
+          <button class="btn-primary" onclick="regEditSelected()">✏ Edit Selected</button>
+        </div>
+      </div>
+      <div class="tbl-wrap" style="max-height:420px">
         <table id="regTable">
-          <thead><tr><th>Service Name</th><th>Entity</th><th>Operation</th><th>Source View</th><th>APIC URL</th><th>Active</th></tr></thead>
+          <thead><tr><th>Service Name</th><th>Entity</th><th>Operation</th><th>Source View</th><th>APIC URL</th><th>Method</th><th>Max Retry</th><th>Interval</th><th>Active</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <small style="color:#888;">Double-click row to load</small>
+    </div>
+  </div>
+
+  <div id="registry-form" class="sub-panel">
+    <div class="split">
+      <div class="card" style="overflow:auto;max-height:calc(100vh - 180px)">
+        <div class="card-header">
+          <div class="card-title"><span class="icon">✏</span> Service Configuration</div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#5a7090;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #1e3050">Core Configuration</div>
+          <div class="form-grid">
+            <label>Service Name <span class="required">*</span></label><input id="r-serviceName">
+            <label>Entity Name</label><input id="r-entityName">
+            <label>Operation Type</label><select id="r-operationType"><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>BATCH</option></select>
+            <label>Source Type</label><select id="r-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
+            <label>Source View</label><input id="r-sourceView">
+            <label>Source Proc</label><input id="r-sourceProc">
+            <label>Filter Column</label><input id="r-sourceFilterCol">
+            <label>Key Column</label><input id="r-sourceKeyCol">
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#5a7090;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #1e3050">APIC Configuration</div>
+          <div class="form-grid">
+            <label>JSON Mapping</label><input id="r-jsonMappingName">
+            <label>Record Type Header</label><input id="r-recordTypeHdr">
+            <label>Event Code Header</label><input id="r-eventCodeHdr">
+            <label>APIC Endpoint URL</label><input id="r-apicEndpointUrl">
+            <label>HTTP Method</label><select id="r-httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option><option>GET</option></select>
+            <label>API Version</label><input id="r-apicApiVersion">
+            <label>Cred Code</label><select id="r-credCode"></select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#5a7090;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #1e3050">Callback Configuration</div>
+          <div class="form-grid">
+            <label>Callback Table</label><input id="r-callbackTargetTable">
+            <label>Callback Key Col</label><input id="r-callbackKeyCol">
+            <label>Callback Status Col</label><input id="r-callbackStatusCol">
+            <label>Callback Ref Col</label><input id="r-callbackRefCol">
+            <label>Post Callback Proc</label><input id="r-postCallbackProc">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#5a7090;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #1e3050">Scheduling &amp; Limits</div>
+          <div class="form-grid">
+            <label>Exec Order</label><input id="r-executionOrder" value="99" type="number">
+            <label>Batch Size</label><input id="r-batchSize" value="100" type="number">
+            <label>Max Retry Count</label><input id="r-maxRetryCount" value="3" type="number">
+            <label>Retry Interval (min)</label><input id="r-retryIntervalMinutes" value="30" type="number">
+            <label>Timeout (min)</label><input id="r-timeoutMinutes" value="60" type="number">
+            <label>Is Active</label><select id="r-isActive"><option value="Y">✔ Active</option><option value="N">✖ Inactive</option></select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="regSave()">💾 Save Service</button>
+          <button class="btn-muted" onclick="regLoadSelected()">📂 Load Selected</button>
+          <button class="btn-success" onclick="regToggle('Y')">✔ Enable</button>
+          <button class="btn-danger" onclick="regToggle('N')">✖ Disable</button>
+          <button class="btn-muted" onclick="regClear()">✖ Clear</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">📋 Services</div></div>
+        <div class="tbl-wrap" style="max-height:500px">
+          <table id="regTable2">
+            <thead><tr><th>Service Name</th><th>Entity</th><th>Operation</th><th>Active</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <small style="color:#5a7090;font-size:11px;margin-top:6px;display:block">Double-click row to load into form</small>
+      </div>
+    </div>
+  </div>
+
+  <div id="registry-wizard" class="sub-panel">
+    <div class="wizard-wrap">
+      <div class="wizard-steps" id="wizardSteps">
+        <div class="wstep active" id="wstep0"><div class="wstep-num">1</div><div>Service Registry</div></div>
+        <div class="wstep" id="wstep1"><div class="wstep-num">2</div><div>Field Mappings</div></div>
+        <div class="wstep" id="wstep2"><div class="wstep-num">3</div><div>Watermark Init</div></div>
+        <div class="wstep" id="wstep3"><div class="wstep-num">4</div><div>Scheduler Job</div></div>
+      </div>
+      <div class="wizard-body">
+        <!-- Step 1 -->
+        <div id="wiz-step0">
+          <div class="alert alert-info" style="margin-bottom:12px">Step 1 of 4 — Define the core service configuration. Fields marked <span style="color:#e74c3c">*</span> are required.</div>
+          <div class="form-grid">
+            <label>Service Name <span class="required">*</span></label><input id="w-serviceName" placeholder="e.g. BUILDING_CREATE">
+            <label>Entity Name <span class="required">*</span></label><input id="w-entityName" placeholder="e.g. Building">
+            <label>Operation Type</label><select id="w-operationType"><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>BATCH</option></select>
+            <label>Source Type</label><select id="w-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
+            <label>Source View/Proc <span class="required">*</span></label><input id="w-sourceView" placeholder="e.g. XXMPM_CRM_BUILDING_V">
+            <label>Key Column <span class="required">*</span></label><input id="w-sourceKeyCol" placeholder="e.g. BUILDING_ID">
+            <label>JSON Mapping <span class="required">*</span></label><input id="w-jsonMappingName" placeholder="e.g. BUILDING_CREATE_MAP">
+            <label>APIC Endpoint URL <span class="required">*</span></label><input id="w-apicEndpointUrl" placeholder="https://apic.adib.ae/api/v1/building">
+            <label>Record Type Header</label><input id="w-recordTypeHdr">
+            <label>Event Code Header</label><input id="w-eventCodeHdr">
+            <label>HTTP Method</label><select id="w-httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option></select>
+            <label>Cred Code</label><select id="w-credCode"></select>
+            <label>Exec Order</label><input id="w-executionOrder" value="10" type="number">
+            <label>Max Retry</label><input id="w-maxRetryCount" value="3" type="number">
+            <label>Retry Interval (min)</label><input id="w-retryIntervalMinutes" value="30" type="number">
+          </div>
+        </div>
+        <!-- Step 2 -->
+        <div id="wiz-step1" style="display:none">
+          <div class="alert alert-info" style="margin-bottom:12px">Step 2 of 4 — Define JSON field mappings. JSON Mapping Name is pre-filled from Step 1. Add one row per field, or click Skip to add mappings later in the Field Mappings tab.</div>
+          <div class="btn-row" style="margin-bottom:8px">
+            <button class="btn-primary" onclick="wizAddMapRow()">+ Add Row</button>
+            <button class="btn-danger" onclick="wizDelMapRow()">- Remove Row</button>
+          </div>
+          <div class="tbl-wrap" style="max-height:320px">
+            <table id="wizMapTable" class="inline-table">
+              <thead><tr><th>Source Column</th><th>JSON Path</th><th>Data Type</th><th>Mandatory</th><th>Order</th></tr></thead>
+              <tbody id="wizMapBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Step 3 -->
+        <div id="wiz-step2" style="display:none">
+          <div class="alert alert-success" style="margin-bottom:12px">Step 3 of 4 — A watermark record will be created in CRM_MPM_API_WATERMARK for this service. This tracks the last processed timestamp so the outbound job only picks up NEW records on each run.</div>
+          <div class="alert alert-info" style="margin-bottom:12px">
+            <b>Initial watermark date:</b> Set to SYSDATE - 1 (picks up records from yesterday onwards on first run).<br>
+            Use Custom Start Date to push historical records from a specific date.
+          </div>
+          <div class="form-grid" style="max-width:400px">
+            <label>Custom Start Date</label><input id="w-watermarkDate" placeholder="DD-MON-YY (leave blank = yesterday)">
+          </div>
+        </div>
+        <!-- Step 4 -->
+        <div id="wiz-step3" style="display:none">
+          <div class="alert alert-warn" style="margin-bottom:12px">Step 4 of 4 — Most services do NOT need a dedicated job. The existing CRM_MPM_OUTBOUND jobs pick up all active registry entries. Only create a job if this service needs a DIFFERENT schedule.</div>
+          <div class="form-grid" style="max-width:560px">
+            <label>Job Name</label><input id="w-jobName" placeholder="Leave blank to skip">
+            <label>Repeat Interval</label><input id="w-jobInterval" value="FREQ=DAILY;BYHOUR=6;BYMINUTE=0;BYSECOND=0">
+            <label>Procedure</label><input id="w-jobProc" value="PKG_CRM_INTEGRATION.RUN_OUTBOUND_JOB">
+            <label>Enable on Create</label><select id="w-jobEnabled"><option value="N">N — Create Disabled</option><option value="Y">Y — Enable Now</option></select>
+            <label>Comment</label><input id="w-jobComment">
+          </div>
+        </div>
+      </div>
+      <div class="wizard-nav">
+        <span class="wizard-nav-info" id="wizInfo">Step 1 of 4 — Service Registry</span>
+        <div class="btn-row" style="margin:0">
+          <button class="btn-muted" id="wizBtnBack" onclick="wizBack()" disabled>◀ Back</button>
+          <button class="btn-primary" id="wizBtnNext" onclick="wizNext()">Next ▶</button>
+          <button class="btn-success" onclick="wizFinish()">✔ Skip / Finish</button>
+          <button class="btn-danger" onclick="wizCancel()">✖ Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- TAB 3: FIELD MAPPINGS -->
+<!-- ═══════════════════════════════════════════════════════ TAB 3: FIELD MAPPINGS -->
 <div id="tab-mappings" class="tab-panel">
   <div class="split">
     <div class="card">
-      <h3>Field Mapping Details</h3>
+      <div class="card-header"><div class="card-title"><span class="icon">🔗</span> Mapping Details</div></div>
       <div class="form-grid">
-        <label>Mapping Name *</label><select id="m-jsonMappingName" onchange="mapRefresh()"></select>
-        <label>Display Order</label><input id="m-displayOrder" type="number" value="1">
-        <label>Source Column *</label><input id="m-sourceColumn">
-        <label>JSON Path *</label><input id="m-jsonPath">
-        <label>Data Type</label><select id="m-dataType"><option>VARCHAR</option><option>NUMBER</option><option>DATE</option><option>BOOLEAN</option></select>
-        <label>Date Format</label><input id="m-dateFormat" placeholder="DD-MON-YYYY">
-        <label>Is Mandatory</label><select id="m-isMandatory"><option value="N">N</option><option value="Y">Y</option></select>
-        <label>Is Active</label><select id="m-isActive"><option value="Y">Y</option><option value="N">N</option></select>
+        <label>Mapping Name <span class="required">*</span></label><select id="m-jsonMappingName" onchange="mapRefresh()"></select>
+        <label>Display Order</label><input id="m-displayOrder" type="number" value="10">
+        <label>Source Column <span class="required">*</span></label><input id="m-sourceColumn">
+        <label>JSON Path <span class="required">*</span></label><input id="m-jsonPath">
+        <label>Data Type</label><select id="m-dataType"><option>VARCHAR</option><option>NUMBER</option><option>DATE</option><option>BOOLEAN</option><option>CLOB</option></select>
+        <label>Date Format</label><input id="m-dateFormat" placeholder="DD-MON-YYYY HH24:MI:SS">
+        <label>Is Mandatory</label><select id="m-isMandatory"><option value="N">N — Optional</option><option value="Y">Y — Required</option></select>
+        <label>Is Active</label><select id="m-isActive"><option value="Y">✔ Active</option><option value="N">✖ Inactive</option></select>
       </div>
       <div class="btn-row">
-        <button class="btn-blue" onclick="mapSave()">💾 Save</button>
-        <button class="btn-grey" onclick="mapRefresh()">🔄 Refresh</button>
-        <button class="btn-grey" onclick="mapLoadSelected()">📂 Load Selected</button>
-        <button class="btn-green" onclick="mapToggle('Y')">✔ Activate</button>
-        <button class="btn-red" onclick="mapToggle('N')">✖ Deactivate</button>
-        <button class="btn-red" onclick="mapClear()">✖ Clear</button>
+        <button class="btn-primary" onclick="mapSave()">💾 Save Mapping</button>
+        <button class="btn-muted" onclick="mapLoadSelected()">📂 Load Selected</button>
+        <button class="btn-success" onclick="mapToggle('Y')">✔ Enable</button>
+        <button class="btn-danger" onclick="mapToggle('N')">✖ Disable</button>
+        <button class="btn-muted" onclick="mapRefresh()">🔄 Refresh</button>
+        <button class="btn-muted" onclick="mapClear()">✖ Clear</button>
       </div>
     </div>
     <div class="card">
-      <h3>Field Mappings</h3>
-      <div class="tbl-wrap">
+      <div class="card-header"><div class="card-title"><span class="icon">📋</span> Field Mappings</div><span style="font-size:11px;color:#5a7090">Double-click to load</span></div>
+      <div class="tbl-wrap" style="max-height:440px">
         <table id="mapTable">
           <thead><tr><th>ID</th><th>Mapping Name</th><th>Order</th><th>Source Col</th><th>JSON Path</th><th>Type</th><th>Mandatory</th><th>Active</th></tr></thead>
           <tbody></tbody>
@@ -226,47 +428,52 @@ tr.selected td { background: #1a3550; }
   </div>
 </div>
 
-<!-- TAB 4: WATERMARK -->
+<!-- ═══════════════════════════════════════════════════════════ TAB 4: WATERMARK -->
 <div id="tab-watermark" class="tab-panel">
   <div class="card">
-    <h3>Watermark Management</h3>
-    <div class="filter-row">
-      <label>Set Date (DD-MON-YY HH24:MI):</label>
-      <input id="wm-date" placeholder="01-JAN-24 00:00" style="width:180px">
-      <button class="btn-blue" onclick="wmSetDate()">📅 Set Date</button>
-      <button class="btn-orange" onclick="wmReset()">🔄 Reset Selected</button>
-      <button class="btn-grey" onclick="wmRefresh()">🔄 Refresh</button>
+    <div class="card-header">
+      <div class="card-title"><span class="icon">💧</span> Watermark Management</div>
+      <div class="btn-row" style="margin:0">
+        <button class="btn-muted" onclick="wmRefresh()">🔄 Refresh</button>
+        <button class="btn-warning" onclick="wmReset()">🔄 Reset Selected (Full Re-push)</button>
+        <button class="btn-primary" onclick="wmSetDate()">📅 Set Start Date</button>
+      </div>
     </div>
-    <div class="tbl-wrap">
+    <div class="filter-row">
+      <label>Custom Date (DD-MON-YY HH24:MI):</label>
+      <input id="wm-date" placeholder="01-JAN-24 00:00" style="width:190px">
+      <span style="font-size:11px;color:#5a7090">Leave blank when using Reset (uses SYSDATE-1)</span>
+    </div>
+    <div class="tbl-wrap" style="max-height:420px">
       <table id="wmTable">
-        <thead><tr><th>Service Name</th><th>Last Processed</th><th>Last Status</th><th>Last Records</th><th>Registry ID</th></tr></thead>
+        <thead><tr><th>Service Name</th><th>Last Processed Timestamp</th><th>Last Run Status</th><th>Last Records</th><th>Registry ID</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- TAB 5: ERROR CODES -->
+<!-- ══════════════════════════════════════════════════════════ TAB 5: ERROR CODES -->
 <div id="tab-errorcodes" class="tab-panel">
   <div class="split">
     <div class="card">
-      <h3>Error Code Details</h3>
+      <div class="card-header"><div class="card-title"><span class="icon">⚠</span> Error Code Details</div></div>
       <div class="form-grid">
-        <label>Error Code *</label><input id="e-errorCode">
-        <label>Category</label><input id="e-errorCategory">
-        <label>Description</label><input id="e-errorDescription">
-        <label>Is Retryable</label><select id="e-isRetryable"><option value="Y">Y</option><option value="N">N</option></select>
+        <label>Error Code <span class="required">*</span></label><input id="e-errorCode" placeholder="e.g. HTTP_400">
+        <label>Category</label><input id="e-errorCategory" placeholder="e.g. CLIENT_ERROR">
+        <label>Description</label><input id="e-errorDescription" placeholder="Human-readable description">
+        <label>Is Retryable</label><select id="e-isRetryable"><option value="Y">Y — Auto Retry</option><option value="N">N — No Retry</option></select>
       </div>
       <div class="btn-row">
-        <button class="btn-blue" onclick="ecSave()">💾 Save</button>
-        <button class="btn-grey" onclick="ecRefresh()">🔄 Refresh</button>
-        <button class="btn-grey" onclick="ecLoadSelected()">📂 Load Selected</button>
-        <button class="btn-red" onclick="ecClear()">✖ Clear</button>
+        <button class="btn-primary" onclick="ecSave()">💾 Save</button>
+        <button class="btn-muted" onclick="ecLoadSelected()">📂 Load Selected</button>
+        <button class="btn-muted" onclick="ecRefresh()">🔄 Refresh</button>
+        <button class="btn-muted" onclick="ecClear()">✖ Clear</button>
       </div>
     </div>
     <div class="card">
-      <h3>Error Code Master</h3>
-      <div class="tbl-wrap">
+      <div class="card-header"><div class="card-title"><span class="icon">📋</span> Error Code Master</div><span style="font-size:11px;color:#5a7090">Double-click to load</span></div>
+      <div class="tbl-wrap" style="max-height:420px">
         <table id="ecTable">
           <thead><tr><th>Error Code</th><th>Category</th><th>Description</th><th>Retryable</th></tr></thead>
           <tbody></tbody>
@@ -276,66 +483,73 @@ tr.selected td { background: #1a3550; }
   </div>
 </div>
 
-<!-- TAB 6: MONITOR -->
+<!-- ═══════════════════════════════════════════════════════════════ TAB 6: MONITOR -->
 <div id="tab-monitor" class="tab-panel">
   <div class="sub-tabs">
-    <div class="sub-tab active" onclick="showSubTab('monitor','dashboard',this)">📊 Dashboard</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','allrecords',this)">📋 All Records</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','action',this)">⚠ Action Needed</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','retry',this)">🔄 Retry Queue</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','triage',this)">🔍 Error Triage</div>
-    <div class="sub-tab" onclick="showSubTab('monitor','callback',this)">📥 Callback Audit</div>
+    <button class="sub-tab active" onclick="showSubTab('monitor','dashboard',this)">📊 Dashboard</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','allrecords',this)">📋 All Records</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','action',this)">⚠ Action Needed</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','retry',this)">🔄 Retry Queue</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','triage',this)">🔍 Error Triage</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','callback',this)">📥 Callback Audit</button>
   </div>
+
   <div id="monitor-dashboard" class="sub-panel active">
-    <div id="dashCards" class="dash-grid"></div>
+    <div id="dashCards" class="kpi-grid"></div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h3>Service Summary</h3>
-        <button class="btn-grey" onclick="monDashRefresh()">🔄 Refresh</button>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">📊</span> Service Summary</div>
+        <div class="btn-row" style="margin:0">
+          <span id="dashLastRefresh" style="font-size:11px;color:#5a7090"></span>
+          <button class="btn-muted" onclick="monDashRefresh()">🔄 Refresh</button>
+        </div>
       </div>
       <div class="tbl-wrap"><table id="dashTable">
-        <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>Action Needed</th><th>Last Sent</th></tr></thead>
+        <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>⚠ Action Needed</th><th>Last Sent</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
   </div>
+
   <div id="monitor-allrecords" class="sub-panel">
     <div class="card">
       <div class="filter-row">
-        <label>Service:</label><select id="f-service" style="width:160px"><option value="">All</option></select>
-        <label>Status:</label><select id="f-status" style="width:140px"><option value="">All</option></select>
+        <label>Service:</label><select id="f-service" style="width:170px"><option value="">All Services</option></select>
+        <label>Status:</label><select id="f-status" style="width:150px"><option value="">All Statuses</option></select>
         <label>From:</label><input id="f-from" placeholder="01-JAN-24" style="width:100px">
         <label>To:</label><input id="f-to" placeholder="31-DEC-24" style="width:100px">
-        <label>Record ID:</label><input id="f-recId" style="width:120px">
-        <button class="btn-blue" onclick="monRecordsRefresh()">🔍 Search</button>
-        <button class="btn-orange" onclick="monManualRetry('recTable')">🔄 Manual Retry</button>
+        <label>Record ID:</label><input id="f-recId" style="width:130px">
+        <button class="btn-primary" onclick="monRecordsRefresh()">🔍 Search</button>
+        <button class="btn-warning" onclick="monManualRetry('recTable')">🔄 Manual Retry Selected</button>
       </div>
-      <div class="tbl-wrap" style="max-height:400px"><table id="recTable">
-        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Retry</th><th>Manual Retry</th></tr></thead>
+      <div class="tbl-wrap" style="max-height:440px"><table id="recTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Retry</th><th>Manual</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
   </div>
+
   <div id="monitor-action" class="sub-panel">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h3>Records Needing Action</h3>
-        <div class="btn-row">
-          <button class="btn-grey" onclick="monActionRefresh()">🔄 Refresh</button>
-          <button class="btn-orange" onclick="monManualRetry('actionTable')">🔄 Manual Retry Selected</button>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">⚠</span> Records Requiring Action</div>
+        <div class="btn-row" style="margin:0">
+          <button class="btn-muted" onclick="monActionRefresh()">🔄 Refresh</button>
+          <button class="btn-warning" onclick="monManualRetry('actionTable')">🔄 Manual Retry Selected</button>
         </div>
       </div>
-      <div class="tbl-wrap" style="max-height:400px"><table id="actionTable">
-        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Retry</th><th>Action Needed</th></tr></thead>
+      <div class="tbl-wrap" style="max-height:440px"><table id="actionTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error / Validation</th><th>Sent Date</th><th>Retry</th><th>Recommended Action</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
   </div>
+
   <div id="monitor-retry" class="sub-panel">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h3>Manual Retry Queue</h3>
-        <button class="btn-grey" onclick="monRetryRefresh()">🔄 Refresh</button>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🔄</span> Manual Retry Queue</div>
+        <button class="btn-muted" onclick="monRetryRefresh()">🔄 Refresh</button>
       </div>
       <div class="tbl-wrap"><table id="retryTable">
         <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Queued At</th><th>Progress</th></tr></thead>
@@ -343,28 +557,30 @@ tr.selected td { background: #1a3550; }
       </table></div>
     </div>
   </div>
+
   <div id="monitor-triage" class="sub-panel">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h3>Error Triage</h3>
-        <button class="btn-grey" onclick="monTriageRefresh()">🔄 Refresh</button>
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🔍</span> Error Triage &amp; Analysis</div>
+        <button class="btn-muted" onclick="monTriageRefresh()">🔄 Refresh</button>
       </div>
       <div class="tbl-wrap"><table id="triageTable">
-        <thead><tr><th>Status</th><th>Error Code</th><th>Description</th><th>Retryable</th><th>Count</th><th>First Seen</th><th>Last Seen</th><th>Services</th></tr></thead>
+        <thead><tr><th>Status</th><th>Error Code</th><th>Description</th><th>Retryable</th><th>Count</th><th>First Seen</th><th>Last Seen</th><th>Services Affected</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
   </div>
+
   <div id="monitor-callback" class="sub-panel">
     <div class="card">
       <div class="filter-row">
-        <label>Service:</label><select id="cb-service" style="width:160px"><option value="">All</option></select>
-        <label>Status Code:</label><input id="cb-status" style="width:90px">
+        <label>Service:</label><select id="cb-service" style="width:170px"><option value="">All</option></select>
+        <label>Status Code:</label><input id="cb-status" style="width:90px" placeholder="e.g. 200">
         <label>From:</label><input id="cb-from" placeholder="01-JAN-24" style="width:100px">
         <label>To:</label><input id="cb-to" placeholder="31-DEC-24" style="width:100px">
-        <button class="btn-blue" onclick="monCallbackRefresh()">🔍 Search</button>
+        <button class="btn-primary" onclick="monCallbackRefresh()">🔍 Search</button>
       </div>
-      <div class="tbl-wrap" style="max-height:400px"><table id="cbTable">
+      <div class="tbl-wrap" style="max-height:440px"><table id="cbTable">
         <thead><tr><th>Audit ID</th><th>Received At</th><th>Service</th><th>X-Unique-ID</th><th>Status Code</th><th>Description</th><th>Raw Payload</th></tr></thead>
         <tbody></tbody>
       </table></div>
@@ -372,25 +588,59 @@ tr.selected td { background: #1a3550; }
   </div>
 </div>
 
-<!-- TAB 8: SCHEDULER -->
+<!-- ═══════════════════════════════════════════════════════ TAB 7: SCRIPT DOWNLOAD -->
+<div id="tab-scripts" class="tab-panel">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">📄</span> Deployment Script Generator</div>
+      <span style="font-size:11px;color:#5a7090">Generate scripts to deploy configuration to SIT / UAT / PROD</span>
+    </div>
+    <div class="filter-row">
+      <label>Section:</label>
+      <select id="sc-section" style="width:340px">
+        <option value="all">🗂 All Scripts (Full Deployment Package)</option>
+        <option value="registry">📋 Config Data — Registry + Mappings + Error Codes</option>
+        <option value="scheduler">⏰ Scheduler Jobs</option>
+        <option value="watermark">💧 Watermark Initialisation</option>
+        <option value="users">👤 App Users (with Roles &amp; Service Access)</option>
+        <option value="ddl">🏗 Table DDL (DBMS_METADATA query)</option>
+        <option value="sequences">🔢 Sequence DDL (DBMS_METADATA query)</option>
+      </select>
+      <button class="btn-primary" onclick="scriptGenerate()">⚙ Generate Script</button>
+      <button class="btn-success" onclick="scriptDownload()">⬇ Download .sql</button>
+      <button class="btn-muted" onclick="scriptClear()">✖ Clear</button>
+      <span id="scLineCount" style="font-size:11px;color:#5a7090"></span>
+    </div>
+  </div>
+  <div class="card">
+    <textarea id="scOutput" class="code-area" style="height:460px" readonly placeholder="Click Generate Script to produce deployment SQL..."></textarea>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB 8: SCHEDULER -->
 <div id="tab-scheduler" class="tab-panel">
   <div class="card">
-    <h3>Scheduler Jobs</h3>
-    <div class="btn-row" style="margin-bottom:8px">
-      <button class="btn-grey" onclick="schRefresh()">🔄 Refresh</button>
-      <button class="btn-green" onclick="schEnable()">▶ Enable</button>
-      <button class="btn-red" onclick="schDisable()">⏸ Disable</button>
-      <button class="btn-orange" onclick="schRunNow()">⚡ Run Now</button>
-      <button class="btn-red" onclick="schStop()">⏹ Stop</button>
-      <button class="btn-grey" onclick="schHistory()">📋 History</button>
+    <div class="card-header">
+      <div class="card-title"><span class="icon">⏰</span> Scheduler Jobs</div>
+      <div class="btn-row" style="margin:0">
+        <button class="btn-muted" onclick="schRefresh()">🔄 Refresh</button>
+        <button class="btn-success" onclick="schEnable()">▶ Enable</button>
+        <button class="btn-danger" onclick="schDisable()">⏸ Disable</button>
+        <button class="btn-warning" onclick="schRunNow()">⚡ Run Now</button>
+        <button class="btn-danger" onclick="schStop()">⏹ Stop</button>
+        <button class="btn-muted" onclick="schHistory()">📋 View History</button>
+      </div>
     </div>
     <div class="tbl-wrap"><table id="schTable">
-      <thead><tr><th>Job Name</th><th>Enabled</th><th>State</th><th>Interval</th><th>Next Run</th><th>Last Run</th><th>Comments</th></tr></thead>
+      <thead><tr><th>Job Name</th><th>Enabled</th><th>State</th><th>Repeat Interval</th><th>Next Run</th><th>Last Run</th><th>Comments</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
   <div class="card" id="schHistCard" style="display:none">
-    <h3 id="schHistTitle">Job History</h3>
+    <div class="card-header">
+      <div class="card-title" id="schHistTitle">Job History</div>
+      <button class="btn-muted" onclick="document.getElementById('schHistCard').style.display='none'">✖ Close</button>
+    </div>
     <div class="tbl-wrap"><table id="schHistTable">
       <thead><tr><th>Log ID</th><th>Job Name</th><th>Status</th><th>Run Time</th><th>Operation</th><th>User</th></tr></thead>
       <tbody></tbody>
@@ -398,114 +648,60 @@ tr.selected td { background: #1a3550; }
   </div>
 </div>
 
-<!-- TAB 9: HEALTH CHECK -->
+<!-- ══════════════════════════════════════════════════════════ TAB 9: HEALTH CHECK -->
 <div id="tab-health" class="tab-panel">
   <div class="split">
-    <div class="card">
-      <h3>Test URL</h3>
-      <div class="form-grid">
-        <label>Name</label><input id="h-name" placeholder="My Service">
-        <label>URL</label><input id="h-url" placeholder="https://...">
-      </div>
-      <div class="btn-row">
-        <button class="btn-green" onclick="healthTestUrl()">▶ Test URL</button>
-        <button class="btn-blue" onclick="healthTestToken()">🔑 Test APIC Token</button>
-        <button class="btn-orange" onclick="healthTestPush()">⚡ Test Push (All Services)</button>
-        <button class="btn-grey" onclick="healthRefresh()">🔄 Refresh</button>
-      </div>
-      <div id="healthResult" style="margin-top:10px;padding:8px;background:#1a2840;border-radius:4px;font-size:12px;display:none;"></div>
-    </div>
-    <div class="card">
-      <h3>Saved Health URLs</h3>
-      <div class="tbl-wrap"><table id="healthTable">
-        <thead><tr><th>Name</th><th>URL</th><th>Last Status</th><th>Last Tested</th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-    </div>
-  </div>
-</div>
-
-<!-- TAB: USERS (ADMIN ONLY) -->
-<div id="tab-users" class="tab-panel">
-  <div class="split">
-    <div class="card">
-      <h3>👤 User Management</h3>
-      <div class="form-grid">
-        <label>Username *</label><input id="u-username" placeholder="john.doe">
-        <label>Full Name</label><input id="u-fullName" placeholder="John Doe">
-        <label>Password</label><input id="u-password" type="password" placeholder="Leave blank to keep existing">
-        <label>Role *</label>
-        <select id="u-role">
-          <option value="ADMIN">ADMIN — Full access</option>
-          <option value="OPERATOR">OPERATOR — Monitor + Retry only</option>
-          <option value="VIEWER" selected>VIEWER — Read only</option>
-        </select>
-        <label>Is Active</label>
-        <select id="u-isActive"><option value="Y">Y — Active</option><option value="N">N — Inactive</option></select>
-      </div>
-
-      <div style="margin-top:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <label style="color:#aaa;font-size:12px;">Assign Services</label>
-          <div style="display:flex;gap:6px;">
-            <button class="btn-green" style="padding:2px 8px;font-size:11px" onclick="assignAllSvc()">✔ All Services</button>
-            <button class="btn-grey" style="padding:2px 8px;font-size:11px" onclick="clearAllSvc()">✖ Clear All</button>
-          </div>
+    <div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><span class="icon">🩺</span> Test Connectivity</div></div>
+        <div class="form-grid">
+          <label>Name</label><input id="h-name" placeholder="My Service">
+          <label>URL</label><input id="h-url" placeholder="https://...">
         </div>
-        <small style="color:#666;font-size:11px;">Leave all unselected = access ALL services automatically</small>
-        <div id="svcChips" class="svc-list"></div>
+        <div class="btn-row">
+          <button class="btn-success" onclick="healthTestUrl()">▶ Test URL</button>
+          <button class="btn-primary" onclick="healthTestToken()">🔑 Test APIC Token</button>
+          <button class="btn-warning" onclick="healthTestPush()">⚡ Test Push All Services</button>
+          <button class="btn-muted" onclick="healthRefresh()">🔄 Refresh</button>
+        </div>
+        <div id="healthResult" style="display:none;margin-top:12px;padding:12px;background:#0d1828;border-radius:6px;font-size:12px;border:1px solid #1e3050;line-height:1.8"></div>
       </div>
-
-      <div class="btn-row">
-        <button class="btn-blue" onclick="userSave()">💾 Save User</button>
-        <button class="btn-grey" onclick="userRefresh()">🔄 Refresh</button>
-        <button class="btn-grey" onclick="userLoadSelected()">📂 Load Selected</button>
-        <button class="btn-green" onclick="userToggle('Y')">✔ Activate</button>
-        <button class="btn-red" onclick="userToggle('N')">✖ Deactivate</button>
-        <button class="btn-orange" onclick="userResetPwd()">🔑 Reset Password</button>
-        <button class="btn-red" onclick="userClear()">✖ Clear</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>User List</h3>
-      <div class="tbl-wrap">
-        <table id="userTable">
-          <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Active</th><th>Services</th><th>Last Login</th><th>Created</th></tr></thead>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><span class="icon">📋</span> Saved Health URLs</div></div>
+        <div class="tbl-wrap"><table id="healthTable">
+          <thead><tr><th>Name</th><th>URL</th><th>Last Status</th><th>Last Tested</th></tr></thead>
           <tbody></tbody>
-        </table>
+        </table></div>
       </div>
-      <small style="color:#888;">Double-click row to load</small>
-
-      <div style="margin-top:12px;padding:8px;background:#1a2840;border-radius:4px;">
-        <div style="color:#aaa;font-size:11px;margin-bottom:4px;">Role Permissions:</div>
-        <div style="font-size:11px;color:#888;line-height:1.8">
-          <span class="role-badge role-ADMIN">ADMIN</span> — All tabs, user management, all actions<br>
-          <span class="role-badge role-OPERATOR">OPERATOR</span> — Monitor, retry, scheduler (no config changes)<br>
-          <span class="role-badge role-VIEWER">VIEWER</span> — Read-only view of all tabs
-        </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title"><span class="icon">📊</span> System Status</div></div>
+      <div id="sysStatus" style="font-size:12px;line-height:2">
+        <div>🔄 Loading system status...</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- TAB 10: TEST PUSH -->
+<!-- ═══════════════════════════════════════════════════════════ TAB 10: TEST PUSH -->
 <div id="tab-testpush" class="tab-panel">
   <div class="card">
-    <h3>⚡ Test Push — Single Record to CRM via APIC</h3>
+    <div class="card-header">
+      <div class="card-title"><span class="icon">⚡</span> Test Push — Single Record to CRM via APIC</div>
+    </div>
     <div class="filter-row">
       <label>Service:</label>
-      <select id="tp-service" style="width:220px"><option value="">-- Select Service --</option></select>
+      <select id="tp-service" style="width:230px"><option value="">-- Select Service --</option></select>
       <label>Key Value:</label>
-      <input id="tp-keyValue" placeholder="e.g. BUILDING_ID value" style="width:180px">
-      <button class="btn-blue" onclick="testPushRecord()">⚡ Push to CRM</button>
-      <button class="btn-grey" onclick="testPushClear()">✖ Clear Results</button>
+      <input id="tp-keyValue" placeholder="e.g. source record key" style="width:200px" onkeydown="if(event.key==='Enter')testPushRecord()">
+      <button class="btn-primary" onclick="testPushRecord()">⚡ Push to CRM</button>
+      <button class="btn-muted" onclick="testPushClear()">✖ Clear Results</button>
     </div>
-    <small style="color:#888;font-size:11px;">Calls PKG_CRM_INTEGRATION.SEND_TO_APIC for a single record — use only with valid test data</small>
+    <div class="alert alert-warn">This calls PKG_CRM_INTEGRATION.SEND_TO_APIC for a single record. Use only with valid test data on non-production environments.</div>
   </div>
   <div class="card">
-    <h3>Push Results</h3>
-    <div class="tbl-wrap" style="max-height:280px">
+    <div class="card-header"><div class="card-title"><span class="icon">📋</span> Push Results</div></div>
+    <div class="tbl-wrap" style="max-height:240px">
       <table id="tpTable">
         <thead><tr><th>Service</th><th>Key Value</th><th>Status</th><th>Response Time</th><th>Log ID</th><th>Pushed At</th></tr></thead>
         <tbody></tbody>
@@ -513,39 +709,72 @@ tr.selected td { background: #1a3550; }
     </div>
   </div>
   <div class="card" id="tpDetailCard" style="display:none">
-    <h3>Push Result Detail</h3>
-    <pre id="tpDetail" style="font-size:12px;color:#aaa;white-space:pre-wrap;padding:8px;background:#1a2840;border-radius:4px;"></pre>
+    <div class="card-header"><div class="card-title"><span class="icon">🔍</span> Push Result Detail</div></div>
+    <pre id="tpDetail" style="font-family:'Courier New',monospace;font-size:12px;color:#a8d8a8;background:#0a1020;padding:12px;border-radius:6px;line-height:1.6;white-space:pre-wrap"></pre>
   </div>
 </div>
 
-<!-- TAB 7: SCRIPT DOWNLOAD -->
-<div id="tab-scripts" class="tab-panel">
-  <div class="card">
-    <h3>📄 Script Download — Generate Deployment Scripts</h3>
-    <div class="filter-row">
-      <label>Section:</label>
-      <select id="sc-section" style="width:300px">
-        <option value="all">All Scripts</option>
-        <option value="registry">Config Data (Registry + Mappings + Error Codes)</option>
-        <option value="scheduler">Scheduler Jobs</option>
-        <option value="watermark">Watermark Init</option>
-        <option value="users">App Users (INSERT statements)</option>
-        <option value="ddl">Table DDL (DBMS_METADATA query)</option>
-        <option value="sequences">Sequence DDL (DBMS_METADATA query)</option>
-      </select>
-      <button class="btn-blue" onclick="scriptGenerate()">⚙ Generate</button>
-      <button class="btn-green" onclick="scriptDownload()">⬇ Download .sql</button>
-      <button class="btn-grey" onclick="scriptClear()">✖ Clear</button>
+<!-- ═══════════════════════════════════════════════════════════════ TAB: USERS -->
+<div id="tab-users" class="tab-panel">
+  <div class="split">
+    <div class="card">
+      <div class="card-header"><div class="card-title"><span class="icon">👤</span> User Management</div></div>
+      <div class="form-grid">
+        <label>Username <span class="required">*</span></label><input id="u-username" placeholder="john.doe (lowercase)">
+        <label>Full Name</label><input id="u-fullName" placeholder="John Doe">
+        <label>Password</label><input id="u-password" type="password" placeholder="Leave blank to keep existing">
+        <label>Role <span class="required">*</span></label>
+        <select id="u-role">
+          <option value="ADMIN">ADMIN — Full access + User Management</option>
+          <option value="OPERATOR">OPERATOR — Monitor, Retry, Scheduler</option>
+          <option value="VIEWER" selected>VIEWER — Read-only all tabs</option>
+        </select>
+        <label>Is Active</label>
+        <select id="u-isActive"><option value="Y">✔ Active</option><option value="N">✖ Inactive</option></select>
+      </div>
+      <div style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <label class="form-label">Service Access Restriction</label>
+          <div class="btn-row" style="margin:0;gap:4px">
+            <button class="btn-success" style="padding:2px 8px;font-size:11px" onclick="assignAllSvc()">✔ All</button>
+            <button class="btn-muted" style="padding:2px 8px;font-size:11px" onclick="clearAllSvc()">✖ None</button>
+          </div>
+        </div>
+        <small style="color:#5a7090;font-size:11px;display:block;margin-bottom:4px">Leave all unselected = access ALL services. Select specific services to restrict.</small>
+        <div id="svcChips" class="svc-list"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="userSave()">💾 Save User</button>
+        <button class="btn-muted" onclick="userLoadSelected()">📂 Load Selected</button>
+        <button class="btn-success" onclick="userToggle('Y')">✔ Activate</button>
+        <button class="btn-danger" onclick="userToggle('N')">✖ Deactivate</button>
+        <button class="btn-warning" onclick="userResetPwd()">🔑 Reset Password</button>
+        <button class="btn-muted" onclick="userRefresh()">🔄 Refresh</button>
+        <button class="btn-muted" onclick="userClear()">✖ Clear</button>
+      </div>
     </div>
-    <small style="color:#888;font-size:11px;">Generate scripts to deploy configuration to SIT / UAT / PROD</small>
-  </div>
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <h3>Generated Script</h3>
-      <span id="scLineCount" style="font-size:11px;color:#888;"></span>
+    <div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><span class="icon">👥</span> User List</div><span style="font-size:11px;color:#5a7090">Double-click to load</span></div>
+        <div class="tbl-wrap" style="max-height:320px">
+          <table id="userTable">
+            <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Active</th><th>Service Access</th><th>Last Login</th><th>Created</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-header"><div class="card-title"><span class="icon">📖</span> Role Permissions</div></div>
+        <table style="font-size:11px">
+          <thead><tr><th>Role</th><th>Credentials</th><th>Registry</th><th>Monitor</th><th>Retry</th><th>Scheduler</th><th>User Mgmt</th></tr></thead>
+          <tbody>
+            <tr><td><span class="role-ADMIN">ADMIN</span></td><td>✔ Full</td><td>✔ Full</td><td>✔ Full</td><td>✔ Yes</td><td>✔ Full</td><td>✔ Yes</td></tr>
+            <tr><td><span class="role-OPERATOR">OPERATOR</span></td><td>✖ View</td><td>✖ View</td><td>✔ Full</td><td>✔ Yes</td><td>✔ Enable/Run</td><td>✖ No</td></tr>
+            <tr><td><span class="role-VIEWER">VIEWER</span></td><td>✖ View</td><td>✖ View</td><td>✔ View</td><td>✖ No</td><td>✖ View</td><td>✖ No</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-    <textarea id="scOutput" readonly
-      style="width:100%;height:420px;background:#0d1b2a;color:#a8d8a8;font-family:'Courier New',monospace;font-size:12px;border:1px solid #2c3e50;border-radius:4px;padding:10px;resize:vertical;"></textarea>
   </div>
 </div>
 
@@ -553,405 +782,116 @@ tr.selected td { background: #1a3550; }
 <div id="statusBar">Ready</div>
 
 <script>
-const API = '/api';
-let selectedRows = {};
-let currentUser = null;
-let allServices = [];
-let assignedServices = [];
+const API='/api';let selectedRows={};let currentUser=null;let allServices=[];let assignedServices=[];let wizStep=0;
 
-// ── UTILITIES ────────────────────────────────────────────────────────────────
-function setStatus(msg, type) {
-  const sb = document.getElementById('statusBar');
-  sb.textContent = msg;
-  sb.className = type || '';
-}
+function setStatus(msg,type){const sb=document.getElementById('statusBar');sb.textContent=msg;sb.className=type||''}
+async function api(method,path,body){try{const opts={method,headers:{'Content-Type':'application/json'}};if(body)opts.body=JSON.stringify(body);const r=await fetch(API+path,opts);if(r.status===401){window.location.href='/login';return;}const j=await r.json();if(!j.success)throw new Error(j.error);return j.data}catch(e){setStatus('Error: '+e.message,'err');throw e}}
+function sBadge(s){const m={SUCCESS:'b-green',SENT:'b-blue',VALIDATION_FAILED:'b-orange',EXHAUSTED:'b-red',FAILED:'b-orange',DUPLICATE_RECORD:'b-grey',RECORD_NOT_FOUND:'b-orange',CRM_REJECTED:'b-red',TIMEOUT:'b-orange',RETRY_IN_PROGRESS:'b-blue',Y:'b-green',N:'b-red','TRUE':'b-green','FALSE':'b-red'};return`<span class="badge ${m[s]||'b-grey'}">${s||''}</span>`}
+function fillTable(tid,rows,dbl){const tb=document.querySelector('#'+tid+' tbody');tb.innerHTML='';(rows||[]).forEach((row,i)=>{const v=Array.isArray(row)?row:Object.values(row);const tr=document.createElement('tr');tr.innerHTML=v.map(x=>`<td>${x===null?'':String(x)}</td>`).join('');tr.onclick=()=>{document.querySelectorAll('#'+tid+' tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows[tid]={index:i,data:v}};if(dbl)tr.ondblclick=()=>{tr.click();dbl()};tb.appendChild(tr)})}
+function showTab(name,btn){document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');if(btn)btn.classList.add('active');const L={credentials:credRefresh,registry:()=>{regRefresh();loadCredCodes()},mappings:()=>{mapLoadNames();mapRefresh()},watermark:wmRefresh,errorcodes:ecRefresh,monitor:()=>{monDashRefresh();loadServiceNames()},scripts:()=>{},scheduler:schRefresh,health:()=>{healthRefresh();loadSysStatus()},testpush:tpLoadServices,users:()=>{userRefresh();loadSvcChips()}};if(L[name])L[name]()}
+function showSubTab(group,name,btn){document.querySelectorAll(`#tab-${group} .sub-panel`).forEach(p=>p.classList.remove('active'));document.querySelectorAll(`#tab-${group} .sub-tab`).forEach(b=>b.classList.remove('active'));document.getElementById(group+'-'+name).classList.add('active');if(btn)btn.classList.add('active')}
 
-async function api(method, path, body) {
-  try {
-    const opts = { method, headers: {'Content-Type':'application/json'} };
-    if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(API + path, opts);
-    if (r.status === 401) { window.location.href = '/login'; return; }
-    const j = await r.json();
-    if (!j.success) throw new Error(j.error);
-    return j.data;
-  } catch(e) {
-    setStatus('Error: ' + e.message, 'err');
-    throw e;
-  }
-}
+async function ping(){try{const d=await api('GET','/ping');document.getElementById('dbStatus').textContent='● DB Connected — '+d.dbTime;document.getElementById('dbStatus').className='ok'}catch(e){document.getElementById('dbStatus').textContent='● DB Error';document.getElementById('dbStatus').className='err'}}
+async function loadCurrentUser(){try{const d=await api('GET','/users/me');currentUser=d;document.getElementById('userBadge').textContent='👤 '+(d.fullName||d.username)+' ['+d.role+']';if(d.role==='ADMIN')document.getElementById('tabUsers').style.display=''}catch(e){}}
 
-function statusBadge(s) {
-  const m = {SUCCESS:'green',SENT:'blue',VALIDATION_FAILED:'orange',EXHAUSTED:'red',
-    FAILED:'orange',DUPLICATE_RECORD:'grey',RECORD_NOT_FOUND:'orange',CRM_REJECTED:'red',
-    TIMEOUT:'orange',RETRY_IN_PROGRESS:'blue',Y:'green',N:'red'};
-  return `<span class="badge badge-${m[s]||'grey'}">${s||''}</span>`;
-}
+// CREDENTIALS
+async function credRefresh(){try{const r=await api('GET','/credentials');fillTable('credTable',r,credLoadSelected);setStatus('Credentials: '+r.length,'ok')}catch(e){}}
+function credClear(){['c-credCode','c-tokenUrl','c-clientId','c-secret','c-scope','c-walletPath','c-walletPwd'].forEach(id=>document.getElementById(id).value='');document.getElementById('c-grantType').value='client_credentials';document.getElementById('c-isActive').value='Y'}
+async function credSave(){const b={credCode:document.getElementById('c-credCode').value.trim().toUpperCase(),tokenUrl:document.getElementById('c-tokenUrl').value.trim(),clientId:document.getElementById('c-clientId').value.trim(),clientSecret:document.getElementById('c-secret').value.trim(),scope:document.getElementById('c-scope').value.trim(),grantType:document.getElementById('c-grantType').value.trim(),walletPath:document.getElementById('c-walletPath').value.trim(),walletPwd:document.getElementById('c-walletPwd').value.trim(),isActive:document.getElementById('c-isActive').value};if(!b.credCode||!b.tokenUrl||!b.clientId||!b.clientSecret){setStatus('Required fields missing','warn');return}try{const msg=await api('POST','/credentials',b);setStatus(msg,'ok');credClear();credRefresh()}catch(e){}}
+async function credLoadSelected(){const sel=selectedRows['credTable'];if(!sel){setStatus('Select a row first','warn');return}try{const d=await api('GET','/credentials/'+sel.data[0]);const v=Object.values(d);document.getElementById('c-credCode').value=v[0]||'';document.getElementById('c-tokenUrl').value=v[1]||'';document.getElementById('c-clientId').value=v[2]||'';document.getElementById('c-scope').value=v[3]||'';document.getElementById('c-grantType').value=v[4]||'client_credentials';document.getElementById('c-walletPath').value=v[5]||'';document.getElementById('c-isActive').value=v[6]||'Y';setStatus('Loaded '+v[0],'ok')}catch(e){}}
+async function credRotateSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),s=document.getElementById('c-secret').value.trim();if(!cc||!s){setStatus('Enter Cred Code and new Secret','warn');return}if(!confirm('Rotate secret for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-secret',{newSecret:s});setStatus(msg,'ok');credRefresh()}catch(e){}}
+async function credRotateWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),p=document.getElementById('c-walletPwd').value.trim();if(!cc||!p){setStatus('Enter Cred Code and Wallet Password','warn');return}if(!confirm('Rotate wallet for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-wallet',{newWalletPwd:p});setStatus(msg,'ok');credRefresh()}catch(e){}}
+async function credTestSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return}try{const d=await api('POST','/credentials/'+cc+'/test-secret');alert('Credential: '+cc+'\nField: Client Secret\n\nResult: '+d.result);setStatus(d.result,'ok')}catch(e){}}
+async function credTestWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return}try{const d=await api('POST','/credentials/'+cc+'/test-wallet');alert('Credential: '+cc+'\nField: Wallet\n\nResult: '+d.result);setStatus(d.result,'ok')}catch(e){}}
+async function loadCredCodes(){try{const codes=await api('GET','/credentials/codes');['r-credCode','w-credCode'].forEach(id=>{const sel=document.getElementById(id);if(sel)sel.innerHTML='<option value="">-- Select --</option>'+codes.map(c=>`<option>${c}</option>`).join('')})}catch(e){}}
 
-function fillTable(tableId, rows, dblClick) {
-  const tb = document.querySelector('#'+tableId+' tbody');
-  tb.innerHTML = '';
-  (rows||[]).forEach((row, i) => {
-    const vals = Array.isArray(row) ? row : Object.values(row);
-    const tr = document.createElement('tr');
-    tr.dataset.index = i;
-    tr.innerHTML = vals.map(v => `<td>${v===null?'':String(v)}</td>`).join('');
-    tr.onclick = () => {
-      document.querySelectorAll('#'+tableId+' tr.selected').forEach(r=>r.classList.remove('selected'));
-      tr.classList.add('selected');
-      selectedRows[tableId] = {index:i, data:vals};
-    };
-    if (dblClick) tr.ondblclick = () => { tr.click(); dblClick(); };
-    tb.appendChild(tr);
-  });
-}
+// SERVICE REGISTRY
+async function regRefresh(){try{const rows=await api('GET','/registry');const mkRow=(row,i,tid)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td>${v[0]||''}</td><td>${v[1]||''}</td><td>${v[2]||''}</td><td style="font-size:11px">${v[4]||''}</td><td style="font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${v[11]||''}</td><td>${v[12]||''}</td><td>${v[22]||''}</td><td>${v[23]||''}</td><td>${sBadge(v[25])}</td>`;tr.onclick=()=>{document.querySelectorAll('#'+tid+' tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows[tid]={index:i,data:v}};tr.ondblclick=()=>{tr.click();if(tid==='regTable2')regLoadSelected()};return tr};['regTable','regTable2'].forEach(tid=>{const tb=document.querySelector('#'+tid+' tbody');if(!tb)return;tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');if(tid==='regTable2'){tr.innerHTML=`<td>${v[0]||''}</td><td>${v[1]||''}</td><td>${v[2]||''}</td><td>${sBadge(v[25])}</td>`}else{tr.innerHTML=`<td>${v[0]||''}</td><td>${v[1]||''}</td><td>${v[2]||''}</td><td style="font-size:11px">${v[4]||''}</td><td style="font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v[11]||''}</td><td>${v[12]||''}</td><td>${v[22]||''}</td><td>${v[23]||''}</td><td>${sBadge(v[25])}</td>`}tr.onclick=()=>{document.querySelectorAll('#'+tid+' tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows[tid]={index:i,data:v}};tr.ondblclick=()=>{tr.click();if(tid==='regTable2')regLoadSelected()};tb.appendChild(tr)})});setStatus('Registry: '+rows.length,'ok')}catch(e){}}
+function regLoadSelected(){const sel=selectedRows['regTable']||selectedRows['regTable2'];if(!sel){setStatus('Select a row','warn');return}const v=sel.data;const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];ids.forEach((id,i)=>{const el=document.getElementById('r-'+id);if(el)el.value=v[i]||''});showSubTab('registry','form',document.querySelectorAll('#tab-registry .sub-tab')[1]);setStatus('Loaded '+v[0],'ok')}
+function regEditSelected(){regLoadSelected()}
+function regClear(){['r-serviceName','r-entityName','r-sourceView','r-sourceProc','r-sourceFilterCol','r-sourceKeyCol','r-jsonMappingName','r-recordTypeHdr','r-eventCodeHdr','r-apicEndpointUrl','r-apicApiVersion','r-callbackTargetTable','r-callbackKeyCol','r-callbackStatusCol','r-callbackRefCol','r-postCallbackProc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});['r-executionOrder','r-batchSize','r-maxRetryCount','r-retryIntervalMinutes','r-timeoutMinutes'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=['99','100','3','30','60'][i]});document.getElementById('r-isActive').value='Y'}
+async function regSave(){const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];const b={};ids.forEach(id=>{const el=document.getElementById('r-'+id);if(el)b[id]=el.value});if(!b.serviceName){setStatus('Service Name required','warn');return}try{const msg=await api('POST','/registry',b);setStatus(msg,'ok');regRefresh()}catch(e){}}
+async function regToggle(val){const sel=selectedRows['regTable']||selectedRows['regTable2'];if(!sel){setStatus('Select a row','warn');return}try{const msg=await api('POST','/registry/'+encodeURIComponent(sel.data[0])+'/toggle',{isActive:val});setStatus(msg,'ok');regRefresh()}catch(e){}}
 
-function showTab(name, btn) {
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
-  if (btn) btn.classList.add('active');
-  const loaders = {
-    credentials: credRefresh,
-    registry: ()=>{regRefresh();loadCredCodes();},
-    mappings: ()=>{mapLoadNames();mapRefresh();},
-    watermark: wmRefresh,
-    errorcodes: ecRefresh,
-    monitor: ()=>{monDashRefresh();loadServiceNames();},
-    scheduler: schRefresh,
-    health: healthRefresh,
-    testpush: tpLoadServices,
-    scripts: ()=>{},
-    users: ()=>{userRefresh();loadSvcChips();}
-  };
-  if (loaders[name]) loaders[name]();
-}
+// WIZARD
+function wizInit(){wizStep=0;wizUpdateUI();document.getElementById('wizMapBody').innerHTML='';for(let i=0;i<8;i++)wizAddMapRow()}
+function wizUpdateUI(){for(let i=0;i<4;i++){const el=document.getElementById('wiz-step'+i);if(el)el.style.display=i===wizStep?'block':'none';const st=document.getElementById('wstep'+i);if(st){st.className='wstep'+(i<wizStep?' done':i===wizStep?' active':'')}}document.getElementById('wizBtnBack').disabled=wizStep===0;document.getElementById('wizBtnNext').style.display=wizStep<3?'':'none';const labels=['Step 1 of 4 — Service Registry','Step 2 of 4 — Field Mappings','Step 3 of 4 — Watermark Init','Step 4 of 4 — Scheduler Job'];document.getElementById('wizInfo').textContent=labels[wizStep]}
+async function wizNext(){if(wizStep===0){const sn=document.getElementById('w-serviceName').value.trim();if(!sn){setStatus('Service Name is required','warn');return};if(wizStep===0){const mn=document.getElementById('w-jsonMappingName').value.trim();if(!mn)document.getElementById('w-serviceName').dispatchEvent(new Event('input'))}}wizStep=Math.min(3,wizStep+1);wizUpdateUI()}
+function wizBack(){wizStep=Math.max(0,wizStep-1);wizUpdateUI()}
+async function wizFinish(){const sn=document.getElementById('w-serviceName').value.trim();if(!sn){setStatus('Service Name required in Step 1','warn');return}const b={serviceName:sn,entityName:document.getElementById('w-entityName').value,operationType:document.getElementById('w-operationType').value,sourceType:document.getElementById('w-sourceType').value,sourceView:document.getElementById('w-sourceView').value,sourceKeyCol:document.getElementById('w-sourceKeyCol').value,jsonMappingName:document.getElementById('w-jsonMappingName').value,apicEndpointUrl:document.getElementById('w-apicEndpointUrl').value,recordTypeHdr:document.getElementById('w-recordTypeHdr').value,eventCodeHdr:document.getElementById('w-eventCodeHdr').value,httpMethod:document.getElementById('w-httpMethod').value,credCode:document.getElementById('w-credCode').value,executionOrder:document.getElementById('w-executionOrder').value,maxRetryCount:document.getElementById('w-maxRetryCount').value,retryIntervalMinutes:document.getElementById('w-retryIntervalMinutes').value,batchSize:'100',timeoutMinutes:'60',isActive:'Y'};try{await api('POST','/registry',b);setStatus('Service created: '+sn,'ok')}catch(e){return}const rows=document.querySelectorAll('#wizMapBody tr');const mappings=[];rows.forEach(tr=>{const inputs=tr.querySelectorAll('input,select');const src=inputs[0]?.value?.trim();const path=inputs[1]?.value?.trim();if(src&&path)mappings.push({jsonMappingName:document.getElementById('w-jsonMappingName').value,sourceColumn:src,jsonPath:path,dataType:inputs[2]?.value||'VARCHAR',isMandatory:inputs[3]?.value||'N',displayOrder:inputs[4]?.value||'10',isActive:'Y'})});for(const m of mappings){try{await api('POST','/mappings',m)}catch(e){}}const wmDate=document.getElementById('w-watermarkDate').value;try{await api('POST','/watermarks/'+encodeURIComponent(sn)+'/reset');if(wmDate)await api('POST','/watermarks/'+encodeURIComponent(sn)+'/set-date',{date:wmDate})}catch(e){}const jobName=document.getElementById('w-jobName').value.trim();if(jobName){try{await api('POST','/scheduler/create',{jobName,interval:document.getElementById('w-jobInterval').value,proc:document.getElementById('w-jobProc').value,enabled:document.getElementById('w-jobEnabled').value,comment:document.getElementById('w-jobComment').value})}catch(e){}}alert('✔ Service "'+sn+'" created successfully!\n\nRegistry: Saved\nMappings: '+(mappings.length)+' rows saved\nWatermark: Initialized\nJob: '+(jobName?'Created: '+jobName:'Skipped'));wizCancel();regRefresh()}
+function wizCancel(){wizStep=0;wizUpdateUI();['w-serviceName','w-entityName','w-sourceView','w-sourceKeyCol','w-jsonMappingName','w-apicEndpointUrl','w-recordTypeHdr','w-eventCodeHdr','w-watermarkDate','w-jobName','w-jobComment'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});document.getElementById('wizMapBody').innerHTML='';for(let i=0;i<8;i++)wizAddMapRow();showSubTab('registry','list',document.querySelectorAll('#tab-registry .sub-tab')[0])}
+function wizAddMapRow(){const tb=document.getElementById('wizMapBody');const i=tb.rows.length+1;const tr=document.createElement('tr');tr.innerHTML=`<td><input placeholder="SOURCE_COL" style="width:130px"></td><td><input placeholder="json.path" style="width:130px"></td><td><select><option>VARCHAR</option><option>NUMBER</option><option>DATE</option><option>BOOLEAN</option><option>CLOB</option></select></td><td><select><option>Y</option><option>N</option></select></td><td><input value="${i*10}" style="width:50px"></td>`;tb.appendChild(tr)}
+function wizDelMapRow(){const tb=document.getElementById('wizMapBody');if(tb.rows.length>1)tb.deleteRow(tb.rows.length-1)}
 
-function showSubTab(group, name, btn) {
-  document.querySelectorAll(`#tab-${group} .sub-panel`).forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll(`#tab-${group} .sub-tab`).forEach(b=>b.classList.remove('active'));
-  document.getElementById(group+'-'+name).classList.add('active');
-  if (btn) btn.classList.add('active');
-}
+// FIELD MAPPINGS
+async function mapLoadNames(){try{const n=await api('GET','/mappings/names');const sel=document.getElementById('m-jsonMappingName');sel.innerHTML=n.map(x=>`<option>${x}</option>`).join('')}catch(e){}}
+async function mapRefresh(){const name=document.getElementById('m-jsonMappingName').value;try{const r=await api('GET','/mappings'+(name?'?mappingName='+encodeURIComponent(name):''));fillTable('mapTable',r,mapLoadSelected);setStatus('Mappings: '+r.length,'ok')}catch(e){}}
+function mapLoadSelected(){const sel=selectedRows['mapTable'];if(!sel)return;const v=sel.data;document.getElementById('m-displayOrder').value=v[2]||'';document.getElementById('m-sourceColumn').value=v[3]||'';document.getElementById('m-jsonPath').value=v[4]||'';document.getElementById('m-dataType').value=v[5]||'VARCHAR';document.getElementById('m-dateFormat').value=v[6]||'';document.getElementById('m-isMandatory').value=v[7]||'N';document.getElementById('m-isActive').value=v[8]||'Y'}
+function mapClear(){['m-displayOrder','m-sourceColumn','m-jsonPath','m-dateFormat'].forEach(id=>document.getElementById(id).value='');document.getElementById('m-dataType').value='VARCHAR';document.getElementById('m-isMandatory').value='N';document.getElementById('m-isActive').value='Y'}
+async function mapSave(){const b={jsonMappingName:document.getElementById('m-jsonMappingName').value,displayOrder:document.getElementById('m-displayOrder').value,sourceColumn:document.getElementById('m-sourceColumn').value,jsonPath:document.getElementById('m-jsonPath').value,dataType:document.getElementById('m-dataType').value,dateFormat:document.getElementById('m-dateFormat').value,isMandatory:document.getElementById('m-isMandatory').value,isActive:document.getElementById('m-isActive').value};if(!b.sourceColumn||!b.jsonPath){setStatus('Source Column and JSON Path required','warn');return}try{const msg=await api('POST','/mappings',b);setStatus(msg,'ok');mapRefresh()}catch(e){}}
+async function mapToggle(val){const sel=selectedRows['mapTable'];if(!sel){setStatus('Select a row','warn');return}try{const msg=await api('POST','/mappings/'+sel.data[0]+'/toggle',{isActive:val});setStatus(msg,'ok');mapRefresh()}catch(e){}}
 
-// ── INIT & PING ───────────────────────────────────────────────────────────────
-async function ping() {
-  try {
-    const d = await api('GET', '/ping');
-    document.getElementById('dbStatus').textContent = '● Connected — ' + (d.dbTime||'');
-    document.getElementById('dbStatus').className = 'ok';
-  } catch(e) {
-    document.getElementById('dbStatus').textContent = '● DB Error';
-    document.getElementById('dbStatus').className = 'err';
-  }
-}
+// WATERMARK
+async function wmRefresh(){try{const r=await api('GET','/watermarks');fillTable('wmTable',r);setStatus('Watermarks: '+r.length,'ok')}catch(e){}}
+async function wmReset(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return}if(!confirm('Reset watermark for '+sel.data[0]+'?\n\nThis will trigger a FULL re-push of all records for this service on next run.'))return;try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/reset');setStatus(msg,'ok');wmRefresh()}catch(e){}}
+async function wmSetDate(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return}const date=document.getElementById('wm-date').value;if(!date){setStatus('Enter a date first','warn');return}try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/set-date',{date});setStatus(msg,'ok');wmRefresh()}catch(e){}}
 
-async function loadCurrentUser() {
-  try {
-    const d = await api('GET', '/users/me');
-    currentUser = d;
-    document.getElementById('userInfo').textContent = '👤 ' + (d.fullName||d.username) + ' [' + d.role + ']';
-    if (d.role === 'ADMIN') {
-      document.getElementById('tabUsers').style.display = '';
-    }
-  } catch(e) {}
-}
+// ERROR CODES
+async function ecRefresh(){try{const r=await api('GET','/error-codes');fillTable('ecTable',r,ecLoadSelected);setStatus('Error codes: '+r.length,'ok')}catch(e){}}
+function ecLoadSelected(){const sel=selectedRows['ecTable'];if(!sel)return;const v=sel.data;document.getElementById('e-errorCode').value=v[0]||'';document.getElementById('e-errorCategory').value=v[1]||'';document.getElementById('e-errorDescription').value=v[2]||'';document.getElementById('e-isRetryable').value=v[3]||'Y'}
+function ecClear(){['e-errorCode','e-errorCategory','e-errorDescription'].forEach(id=>document.getElementById(id).value='');document.getElementById('e-isRetryable').value='Y'}
+async function ecSave(){const b={errorCode:document.getElementById('e-errorCode').value.trim(),errorCategory:document.getElementById('e-errorCategory').value.trim(),errorDescription:document.getElementById('e-errorDescription').value.trim(),isRetryable:document.getElementById('e-isRetryable').value};if(!b.errorCode){setStatus('Error Code required','warn');return}try{const msg=await api('POST','/error-codes',b);setStatus(msg,'ok');ecRefresh()}catch(e){}}
 
-// ── TAB 1: CREDENTIALS ────────────────────────────────────────────────────────
-async function credRefresh() {
-  try { const rows = await api('GET','/credentials'); fillTable('credTable',rows,credLoadSelected); setStatus('Credentials: '+rows.length,'ok'); } catch(e) {}
-}
-function credClear() {
-  ['c-credCode','c-tokenUrl','c-clientId','c-secret','c-scope','c-walletPath','c-walletPwd'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('c-grantType').value='client_credentials';
-  document.getElementById('c-isActive').value='Y';
-}
-async function credSave() {
-  const body={credCode:document.getElementById('c-credCode').value.trim().toUpperCase(),tokenUrl:document.getElementById('c-tokenUrl').value.trim(),clientId:document.getElementById('c-clientId').value.trim(),clientSecret:document.getElementById('c-secret').value.trim(),scope:document.getElementById('c-scope').value.trim(),grantType:document.getElementById('c-grantType').value.trim(),walletPath:document.getElementById('c-walletPath').value.trim(),walletPwd:document.getElementById('c-walletPwd').value.trim(),isActive:document.getElementById('c-isActive').value};
-  if (!body.credCode||!body.tokenUrl||!body.clientId||!body.clientSecret){setStatus('Required fields missing','warn');return;}
-  try{const msg=await api('POST','/credentials',body);setStatus(msg,'ok');credClear();credRefresh();}catch(e){}
-}
-async function credLoadSelected() {
-  const sel=selectedRows['credTable']; if(!sel){setStatus('Select a row','warn');return;}
-  try{const d=await api('GET','/credentials/'+sel.data[0]);const v=Object.values(d);document.getElementById('c-credCode').value=v[0]||'';document.getElementById('c-tokenUrl').value=v[1]||'';document.getElementById('c-clientId').value=v[2]||'';document.getElementById('c-scope').value=v[3]||'';document.getElementById('c-grantType').value=v[4]||'client_credentials';document.getElementById('c-walletPath').value=v[5]||'';document.getElementById('c-isActive').value=v[6]||'Y';setStatus('Loaded '+v[0],'ok');}catch(e){}
-}
-async function credRotateSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),s=document.getElementById('c-secret').value.trim();if(!cc||!s){setStatus('Enter Cred Code and Secret','warn');return;}if(!confirm('Rotate secret for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-secret',{newSecret:s});setStatus(msg,'ok');credRefresh();}catch(e){}}
-async function credRotateWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase(),p=document.getElementById('c-walletPwd').value.trim();if(!cc||!p){setStatus('Enter Cred Code and Wallet Password','warn');return;}if(!confirm('Rotate wallet for '+cc+'?'))return;try{const msg=await api('POST','/credentials/'+cc+'/rotate-wallet',{newWalletPwd:p});setStatus(msg,'ok');credRefresh();}catch(e){}}
-async function credTestSecret(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return;}try{const d=await api('POST','/credentials/'+cc+'/test-secret');alert('Credential: '+cc+'\nResult: '+d.result);setStatus(d.result,'ok');}catch(e){}}
-async function credTestWallet(){const cc=document.getElementById('c-credCode').value.trim().toUpperCase();if(!cc){setStatus('Enter Cred Code','warn');return;}try{const d=await api('POST','/credentials/'+cc+'/test-wallet');alert('Credential: '+cc+'\nResult: '+d.result);setStatus(d.result,'ok');}catch(e){}}
-async function loadCredCodes(){try{const codes=await api('GET','/credentials/codes');const sel=document.getElementById('r-credCode');sel.innerHTML='<option value="">-- Select --</option>'+codes.map(c=>`<option>${c}</option>`).join('');}catch(e){}}
+// MONITOR
+async function loadServiceNames(){try{const n=await api('GET','/monitor/service-names');const s=await api('GET','/monitor/statuses');['f-service','cb-service'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">All Services</option>'+n.map(x=>`<option>${x}</option>`).join('')});const fs=document.getElementById('f-status');if(fs)fs.innerHTML='<option value="">All Statuses</option>'+s.map(x=>`<option>${x}</option>`).join('')}catch(e){}}
+async function monDashRefresh(){try{const rows=await api('GET','/monitor/dashboard');const t=rows.reduce((a,r)=>{const v=Object.values(r);a.total+=Number(v[1])||0;a.success+=Number(v[2])||0;a.action+=Number(v[9])||0;a.exhausted+=Number(v[7])||0;a.failed+=(Number(v[6])||0);return a},{total:0,success:0,action:0,exhausted:0,failed:0});document.getElementById('dashCards').innerHTML=`<div class="kpi-card"><div class="kpi-num">${t.total}</div><div class="kpi-lbl">Total Records</div></div><div class="kpi-card success"><div class="kpi-num">${t.success}</div><div class="kpi-lbl">Successful</div></div><div class="kpi-card ${t.failed>0?'warn':''}"><div class="kpi-num">${t.failed}</div><div class="kpi-lbl">Auto Retry</div></div><div class="kpi-card ${t.exhausted>0?'danger':''}"><div class="kpi-num">${t.exhausted}</div><div class="kpi-lbl">Exhausted</div></div><div class="kpi-card ${t.action>0?'danger':''}"><div class="kpi-num">${t.action}</div><div class="kpi-lbl">⚠ Action Needed</div></div>`;fillTable('dashTable',rows);const now=new Date().toLocaleTimeString();document.getElementById('dashLastRefresh').textContent='Last refresh: '+now;setStatus('Dashboard refreshed — '+now,'ok')}catch(e){}}
+async function monRecordsRefresh(){const p=new URLSearchParams({serviceName:document.getElementById('f-service').value,status:document.getElementById('f-status').value,fromDate:document.getElementById('f-from').value,toDate:document.getElementById('f-to').value,recordId:document.getElementById('f-recId').value});try{const r=await api('GET','/monitor/records?'+p);fillTable('recTable',r);setStatus('Records: '+r.length,'ok')}catch(e){}}
+async function monManualRetry(tid){const sel=selectedRows[tid];if(!sel){setStatus('Select a record','warn');return}const logId=sel.data[0];if(!confirm('Queue LOG_ID='+logId+' for manual retry?\n\nStatus will be reset to FAILED and picked up on next retry job run.'))return;try{const msg=await api('POST','/monitor/records/'+logId+'/manual-retry');setStatus(msg,'ok')}catch(e){}}
+async function monActionRefresh(){try{const r=await api('GET','/monitor/action-needed');fillTable('actionTable',r);setStatus('Action needed: '+r.length,r.length>0?'warn':'ok')}catch(e){}}
+async function monRetryRefresh(){try{const r=await api('GET','/monitor/retry-queue');fillTable('retryTable',r);setStatus('Retry queue: '+r.length,'ok')}catch(e){}}
+async function monTriageRefresh(){try{const r=await api('GET','/monitor/error-triage');fillTable('triageTable',r);setStatus('Triage loaded','ok')}catch(e){}}
+async function monCallbackRefresh(){const p=new URLSearchParams({serviceName:document.getElementById('cb-service').value,statusCode:document.getElementById('cb-status').value,fromDate:document.getElementById('cb-from').value,toDate:document.getElementById('cb-to').value});try{const r=await api('GET','/monitor/callback-audit?'+p);fillTable('cbTable',r);setStatus('Callbacks: '+r.length,'ok')}catch(e){}}
 
-// ── TAB 2: REGISTRY ───────────────────────────────────────────────────────────
-async function regRefresh(){try{const rows=await api('GET','/registry');const tb=document.querySelector('#regTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td>${v[0]||''}</td><td>${v[1]||''}</td><td>${v[2]||''}</td><td>${v[4]||''}</td><td>${v[11]||''}</td><td>${statusBadge(v[25])}</td>`;tr.onclick=()=>{document.querySelectorAll('#regTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['regTable']={index:i,data:v};};tr.ondblclick=()=>{tr.click();regLoadSelected();};tb.appendChild(tr);});setStatus('Registry: '+rows.length,'ok');window._regRows=rows;}catch(e){}}
-function regLoadSelected(){const sel=selectedRows['regTable'];if(!sel){setStatus('Select a row','warn');return;}const v=sel.data;const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];ids.forEach((id,i)=>{const el=document.getElementById('r-'+id);if(el)el.value=v[i]||'';});}
-function regClear(){['r-serviceName','r-entityName','r-sourceView','r-sourceProc','r-sourceFilterCol','r-sourceKeyCol','r-jsonMappingName','r-recordTypeHdr','r-eventCodeHdr','r-apicEndpointUrl','r-apicApiVersion','r-callbackTargetTable','r-callbackKeyCol','r-callbackStatusCol','r-callbackRefCol','r-postCallbackProc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('r-executionOrder').value='99';document.getElementById('r-batchSize').value='100';document.getElementById('r-maxRetryCount').value='3';document.getElementById('r-retryIntervalMinutes').value='30';document.getElementById('r-timeoutMinutes').value='60';document.getElementById('r-isActive').value='Y';}
-async function regSave(){const ids=['serviceName','entityName','operationType','sourceType','sourceView','sourceProc','sourceFilterCol','sourceKeyCol','jsonMappingName','recordTypeHdr','eventCodeHdr','apicEndpointUrl','httpMethod','apicApiVersion','callbackTargetTable','callbackKeyCol','callbackStatusCol','callbackRefCol','postCallbackProc','credCode','executionOrder','batchSize','maxRetryCount','retryIntervalMinutes','timeoutMinutes','isActive'];const body={};ids.forEach(id=>{const el=document.getElementById('r-'+id);if(el)body[id]=el.value;});if(!body.serviceName){setStatus('Service Name required','warn');return;}try{const msg=await api('POST','/registry',body);setStatus(msg,'ok');regRefresh();}catch(e){}}
-async function regToggle(val){const sel=selectedRows['regTable'];if(!sel){setStatus('Select a row','warn');return;}try{const msg=await api('POST','/registry/'+encodeURIComponent(sel.data[0])+'/toggle',{isActive:val});setStatus(msg,'ok');regRefresh();}catch(e){}}
+// SCRIPTS
+async function scriptGenerate(){const section=document.getElementById('sc-section').value;setStatus('Generating script...');try{const d=await api('GET','/scripts/generate?section='+section);document.getElementById('scOutput').value=d.script||'';const lines=(d.script||'').split('\n').length;document.getElementById('scLineCount').textContent=lines+' lines';setStatus('Script generated: '+lines+' lines','ok')}catch(e){}}
+function scriptDownload(){const content=document.getElementById('scOutput').value;if(!content.trim()){setStatus('Generate script first','warn');return}const ts=new Date().toISOString().replace(/[-T:.Z]/g,'').substring(0,14);const fn='CRM_Script_'+document.getElementById('sc-section').value+'_'+ts+'.sql';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'text/plain'}));a.download=fn;a.click();setStatus('Downloaded: '+fn,'ok')}
+function scriptClear(){document.getElementById('scOutput').value='';document.getElementById('scLineCount').textContent=''}
 
-// ── TAB 3: MAPPINGS ───────────────────────────────────────────────────────────
-async function mapLoadNames(){try{const names=await api('GET','/mappings/names');const sel=document.getElementById('m-jsonMappingName');sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');}catch(e){}}
-async function mapRefresh(){const name=document.getElementById('m-jsonMappingName').value;try{const rows=await api('GET','/mappings'+(name?'?mappingName='+encodeURIComponent(name):''));fillTable('mapTable',rows,mapLoadSelected);setStatus('Mappings: '+rows.length,'ok');}catch(e){}}
-function mapLoadSelected(){const sel=selectedRows['mapTable'];if(!sel)return;const v=sel.data;document.getElementById('m-displayOrder').value=v[2]||'';document.getElementById('m-sourceColumn').value=v[3]||'';document.getElementById('m-jsonPath').value=v[4]||'';document.getElementById('m-dataType').value=v[5]||'VARCHAR';document.getElementById('m-dateFormat').value=v[6]||'';document.getElementById('m-isMandatory').value=v[7]||'N';document.getElementById('m-isActive').value=v[8]||'Y';}
-function mapClear(){['m-displayOrder','m-sourceColumn','m-jsonPath','m-dateFormat'].forEach(id=>document.getElementById(id).value='');document.getElementById('m-dataType').value='VARCHAR';document.getElementById('m-isMandatory').value='N';document.getElementById('m-isActive').value='Y';}
-async function mapSave(){const body={jsonMappingName:document.getElementById('m-jsonMappingName').value,displayOrder:document.getElementById('m-displayOrder').value,sourceColumn:document.getElementById('m-sourceColumn').value,jsonPath:document.getElementById('m-jsonPath').value,dataType:document.getElementById('m-dataType').value,dateFormat:document.getElementById('m-dateFormat').value,isMandatory:document.getElementById('m-isMandatory').value,isActive:document.getElementById('m-isActive').value};if(!body.sourceColumn||!body.jsonPath){setStatus('Source Column and JSON Path required','warn');return;}try{const msg=await api('POST','/mappings',body);setStatus(msg,'ok');mapRefresh();}catch(e){}}
-async function mapToggle(val){const sel=selectedRows['mapTable'];if(!sel){setStatus('Select a row','warn');return;}try{const msg=await api('POST','/mappings/'+sel.data[0]+'/toggle',{isActive:val});setStatus(msg,'ok');mapRefresh();}catch(e){}}
+// SCHEDULER
+async function schRefresh(){try{const rows=await api('GET','/scheduler');const tb=document.querySelector('#schTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:600">${v[0]||''}</td><td>${sBadge(v[1])}</td><td><span class="badge b-grey">${v[2]||''}</span></td><td style="font-size:11px">${v[3]||''}</td><td>${v[4]||''}</td><td>${v[5]||''}</td><td style="font-size:11px;color:#5a7090">${v[6]||''}</td>`;tr.onclick=()=>{document.querySelectorAll('#schTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['schTable']={index:i,data:v}};tb.appendChild(tr)});setStatus('Jobs: '+rows.length,'ok')}catch(e){}}
+async function schEnable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return}try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/enable');setStatus(msg,'ok');schRefresh()}catch(e){}}
+async function schDisable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return}if(!confirm('Disable '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/disable');setStatus(msg,'ok');schRefresh()}catch(e){}}
+async function schRunNow(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return}if(!confirm('Run '+sel.data[0]+' immediately?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/run-now');setStatus(msg,'ok');schRefresh()}catch(e){}}
+async function schStop(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return}if(!confirm('Stop '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/stop');setStatus(msg,'ok');schRefresh()}catch(e){}}
+async function schHistory(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return}try{const r=await api('GET','/scheduler/'+encodeURIComponent(sel.data[0])+'/history');fillTable('schHistTable',r);document.getElementById('schHistTitle').textContent='Job History: '+sel.data[0];document.getElementById('schHistCard').style.display='block';setStatus('History: '+r.length,'ok')}catch(e){}}
 
-// ── TAB 4: WATERMARK ──────────────────────────────────────────────────────────
-async function wmRefresh(){try{const rows=await api('GET','/watermarks');fillTable('wmTable',rows);setStatus('Watermarks: '+rows.length,'ok');}catch(e){}}
-async function wmReset(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return;}if(!confirm('Reset watermark for '+sel.data[0]+'?'))return;try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/reset');setStatus(msg,'ok');wmRefresh();}catch(e){}}
-async function wmSetDate(){const sel=selectedRows['wmTable'];if(!sel){setStatus('Select a row','warn');return;}const date=document.getElementById('wm-date').value;if(!date){setStatus('Enter a date','warn');return;}try{const msg=await api('POST','/watermarks/'+encodeURIComponent(sel.data[0])+'/set-date',{date});setStatus(msg,'ok');wmRefresh();}catch(e){}}
+// HEALTH CHECK
+async function healthRefresh(){try{const r=await api('GET','/health/urls');fillTable('healthTable',r)}catch(e){}}
+async function loadSysStatus(){try{const d=await api('GET','/ping');document.getElementById('sysStatus').innerHTML=`<div>🟢 <b>Oracle DB</b> — Connected</div><div style="color:#5a7090;font-size:11px;margin-left:22px">Server time: ${d.dbTime}</div>`}catch(e){document.getElementById('sysStatus').innerHTML='<div>🔴 <b>Oracle DB</b> — Connection failed</div>'}}
+async function healthTestUrl(){const url=document.getElementById('h-url').value.trim();const name=document.getElementById('h-name').value.trim()||url;if(!url){setStatus('Enter a URL','warn');return}setStatus('Testing '+url+'...');try{const d=await api('POST','/health/test',{url,name});const res=document.getElementById('healthResult');res.style.display='block';res.style.color=d.ok?'#27ae60':'#e74c3c';res.innerHTML=`<b>${name}</b><br>URL: ${url}<br>HTTP Status: <b>${d.statusCode||'ERROR'}</b><br>Response Time: ${d.elapsedMs}ms${d.error?'<br>Error: '+d.error:''}`;setStatus(name+' — HTTP '+(d.statusCode||'ERR')+' '+(d.elapsedMs||'')+'ms',d.ok?'ok':'err')}catch(e){}}
+async function healthTestToken(){try{const codes=await api('GET','/credentials/codes');if(!codes.length){setStatus('No active credentials','warn');return}const cc=prompt('Cred Code to test:\n'+codes.join(', '),codes[0]);if(!cc)return;setStatus('Testing APIC token for '+cc+'...');const d=await api('POST','/health/test-token',{credCode:cc});setStatus(d.result,d.ok?'ok':'err');alert(d.result)}catch(e){}}
+async function healthTestPush(){if(!confirm('Trigger RUN_OUTBOUND_JOB immediately for all active services?\n\nThis sends LIVE pushes to CRM via APIC.'))return;setStatus('Triggering push...');try{const d=await api('POST','/health/test-push');const res=document.getElementById('healthResult');res.style.display='block';res.style.color=d.ok?'#27ae60':'#e74c3c';res.innerHTML='<b>Test Push All Services</b><br>'+d.result;setStatus(d.result,d.ok?'ok':'err')}catch(e){}}
 
-// ── TAB 5: ERROR CODES ────────────────────────────────────────────────────────
-async function ecRefresh(){try{const rows=await api('GET','/error-codes');fillTable('ecTable',rows,ecLoadSelected);setStatus('Error codes: '+rows.length,'ok');}catch(e){}}
-function ecLoadSelected(){const sel=selectedRows['ecTable'];if(!sel)return;const v=sel.data;document.getElementById('e-errorCode').value=v[0]||'';document.getElementById('e-errorCategory').value=v[1]||'';document.getElementById('e-errorDescription').value=v[2]||'';document.getElementById('e-isRetryable').value=v[3]||'Y';}
-function ecClear(){['e-errorCode','e-errorCategory','e-errorDescription'].forEach(id=>document.getElementById(id).value='');document.getElementById('e-isRetryable').value='Y';}
-async function ecSave(){const body={errorCode:document.getElementById('e-errorCode').value.trim(),errorCategory:document.getElementById('e-errorCategory').value.trim(),errorDescription:document.getElementById('e-errorDescription').value.trim(),isRetryable:document.getElementById('e-isRetryable').value};if(!body.errorCode){setStatus('Error Code required','warn');return;}try{const msg=await api('POST','/error-codes',body);setStatus(msg,'ok');ecRefresh();}catch(e){}}
+// TEST PUSH
+async function tpLoadServices(){try{const n=await api('GET','/monitor/service-names');const sel=document.getElementById('tp-service');sel.innerHTML='<option value="">-- Select Service --</option>'+n.map(x=>`<option>${x}</option>`).join('')}catch(e){}}
+async function testPushRecord(){const svc=document.getElementById('tp-service').value;const key=document.getElementById('tp-keyValue').value.trim();if(!svc){setStatus('Select a service','warn');return}if(!key){setStatus('Enter a key value','warn');return}if(!confirm('Push to CRM?\n\nService  : '+svc+'\nKey Value: '+key+'\n\nThis sends a LIVE push to CRM via APIC.\nUse only with valid test data.'))return;setStatus('Pushing '+svc+' key='+key+'...');const start=Date.now();try{const d=await api('POST','/testpush/push',{serviceName:svc,keyValue:key});const elapsed=((Date.now()-start)/1000).toFixed(2);const at=new Date().toLocaleTimeString();const ok=d.logId>0;const detail='Service    : '+svc+'\nKey Value  : '+key+'\nRegistry ID: '+d.registryId+'\nLog ID     : '+d.logId+'\nTime       : '+elapsed+' sec\nPushed At  : '+at+'\n\nCheck Monitor tab for final status (SUCCESS / VALIDATION_FAILED etc).';const tb=document.querySelector('#tpTable tbody');const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:600">${svc}</td><td class="mono">${key}</td><td>${sBadge(ok?'SENT':'ERROR')}</td><td>${elapsed}s</td><td class="mono">${d.logId||'--'}</td><td>${at}</td>`;tr.onclick=()=>{document.getElementById('tpDetail').textContent=detail;document.getElementById('tpDetailCard').style.display='block'};tb.insertBefore(tr,tb.firstChild);document.getElementById('tpDetail').textContent=detail;document.getElementById('tpDetailCard').style.display='block';setStatus(svc+' pushed — Log ID: '+d.logId+' ('+elapsed+'s) — check Monitor',ok?'ok':'err');if(ok)alert('✔ Push Submitted!\n\nService  : '+svc+'\nKey Value: '+key+'\nLog ID   : '+d.logId+'\n\nCheck Monitor tab for final status.')}catch(e){const elapsed=((Date.now()-start)/1000).toFixed(2);const tb=document.querySelector('#tpTable tbody');const tr=document.createElement('tr');tr.innerHTML=`<td>${svc}</td><td>${key}</td><td>${sBadge('ERROR')}</td><td>${elapsed}s</td><td>--</td><td>${new Date().toLocaleTimeString()}</td>`;tb.insertBefore(tr,tb.firstChild)}}
+function testPushClear(){document.querySelector('#tpTable tbody').innerHTML='';document.getElementById('tpDetailCard').style.display='none'}
 
-// ── TAB 6: MONITOR ────────────────────────────────────────────────────────────
-async function loadServiceNames(){try{const names=await api('GET','/monitor/service-names');const statuses=await api('GET','/monitor/statuses');['f-service','cb-service'].forEach(id=>{const sel=document.getElementById(id);sel.innerHTML='<option value="">All</option>'+names.map(n=>`<option>${n}</option>`).join('');});document.getElementById('f-status').innerHTML='<option value="">All</option>'+statuses.map(s=>`<option>${s}</option>`).join('');}catch(e){}}
-async function monDashRefresh(){try{const rows=await api('GET','/monitor/dashboard');const t=rows.reduce((a,r)=>{const v=Object.values(r);a.total+=Number(v[1])||0;a.success+=Number(v[2])||0;a.action+=Number(v[9])||0;a.exhausted+=Number(v[7])||0;return a;},{total:0,success:0,action:0,exhausted:0});document.getElementById('dashCards').innerHTML=`<div class="dash-card"><div class="num">${t.total}</div><div class="lbl">Total</div></div><div class="dash-card"><div class="num" style="color:#27ae60">${t.success}</div><div class="lbl">Success</div></div><div class="dash-card ${t.action>0?'warn':''}"><div class="num">${t.action}</div><div class="lbl">Action Needed</div></div><div class="dash-card ${t.exhausted>0?'danger':''}"><div class="num">${t.exhausted}</div><div class="lbl">Exhausted</div></div>`;fillTable('dashTable',rows);setStatus('Dashboard loaded','ok');}catch(e){}}
-async function monRecordsRefresh(){const params=new URLSearchParams({serviceName:document.getElementById('f-service').value,status:document.getElementById('f-status').value,fromDate:document.getElementById('f-from').value,toDate:document.getElementById('f-to').value,recordId:document.getElementById('f-recId').value});try{const rows=await api('GET','/monitor/records?'+params);fillTable('recTable',rows);setStatus('Records: '+rows.length,'ok');}catch(e){}}
-async function monManualRetry(tableId){const sel=selectedRows[tableId];if(!sel){setStatus('Select a record','warn');return;}const logId=sel.data[0];if(!confirm('Queue LOG_ID='+logId+' for manual retry?'))return;try{const msg=await api('POST','/monitor/records/'+logId+'/manual-retry');setStatus(msg,'ok');}catch(e){}}
-async function monActionRefresh(){try{const rows=await api('GET','/monitor/action-needed');fillTable('actionTable',rows);setStatus('Action needed: '+rows.length,rows.length>0?'warn':'ok');}catch(e){}}
-async function monRetryRefresh(){try{const rows=await api('GET','/monitor/retry-queue');fillTable('retryTable',rows);setStatus('Retry queue: '+rows.length,'ok');}catch(e){}}
-async function monTriageRefresh(){try{const rows=await api('GET','/monitor/error-triage');fillTable('triageTable',rows);setStatus('Triage loaded','ok');}catch(e){}}
-async function monCallbackRefresh(){const params=new URLSearchParams({serviceName:document.getElementById('cb-service').value,statusCode:document.getElementById('cb-status').value,fromDate:document.getElementById('cb-from').value,toDate:document.getElementById('cb-to').value});try{const rows=await api('GET','/monitor/callback-audit?'+params);fillTable('cbTable',rows);setStatus('Callbacks: '+rows.length,'ok');}catch(e){}}
+// USERS
+async function loadSvcChips(){try{allServices=await api('GET','/monitor/service-names');renderSvcChips([])}catch(e){}}
+function renderSvcChips(assigned){assignedServices=assigned||[];const c=document.getElementById('svcChips');c.innerHTML=allServices.map(s=>`<div class="svc-chip ${assignedServices.includes(s)?'assigned':''}" onclick="toggleSvc(this,'${s}')">${s}</div>`).join('')}
+function toggleSvc(el,svc){el.classList.toggle('assigned');if(el.classList.contains('assigned')){if(!assignedServices.includes(svc))assignedServices.push(svc)}else{assignedServices=assignedServices.filter(s=>s!==svc)}}
+function assignAllSvc(){assignedServices=[...allServices];document.querySelectorAll('#svcChips .svc-chip').forEach(c=>c.classList.add('assigned'))}
+function clearAllSvc(){assignedServices=[];document.querySelectorAll('#svcChips .svc-chip').forEach(c=>c.classList.remove('assigned'))}
+async function userRefresh(){try{const rows=await api('GET','/users');const tb=document.querySelector('#userTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:600">${v[0]||''}</td><td>${v[1]||''}</td><td><span class="role-${v[2]||'VIEWER'}">${v[2]||''}</span></td><td>${sBadge(v[3])}</td><td style="font-size:11px">${v[4]||'<span style="color:#27ae60">All Services</span>'}</td><td>${v[5]||'--'}</td><td>${v[6]||''}</td>`;tr.onclick=()=>{document.querySelectorAll('#userTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['userTable']={index:i,data:v}};tr.ondblclick=()=>{tr.click();userLoadSelected()};tb.appendChild(tr)});setStatus('Users: '+rows.length,'ok')}catch(e){}}
+function userLoadSelected(){const sel=selectedRows['userTable'];if(!sel){setStatus('Select a row','warn');return}const v=sel.data;document.getElementById('u-username').value=v[0]||'';document.getElementById('u-fullName').value=v[1]||'';document.getElementById('u-password').value='';document.getElementById('u-role').value=v[2]||'VIEWER';document.getElementById('u-isActive').value=v[3]||'Y';const svcs=v[4]&&v[4]!=='All'?v[4].split(',').map(s=>s.trim()):[];renderSvcChips(svcs);setStatus('Loaded '+v[0],'ok')}
+function userClear(){['u-username','u-fullName','u-password'].forEach(id=>document.getElementById(id).value='');document.getElementById('u-role').value='VIEWER';document.getElementById('u-isActive').value='Y';renderSvcChips([])}
+async function userSave(){const b={username:document.getElementById('u-username').value.trim().toLowerCase(),fullName:document.getElementById('u-fullName').value.trim(),password:document.getElementById('u-password').value.trim(),role:document.getElementById('u-role').value,isActive:document.getElementById('u-isActive').value,services:assignedServices.join(',')};if(!b.username){setStatus('Username required','warn');return}try{const msg=await api('POST','/users',b);setStatus(msg,'ok');userClear();userRefresh()}catch(e){}}
+async function userToggle(val){const sel=selectedRows['userTable'];if(!sel){setStatus('Select a row','warn');return}try{const msg=await api('POST','/users/'+sel.data[0]+'/toggle',{isActive:val});setStatus(msg,'ok');userRefresh()}catch(e){}}
+async function userResetPwd(){const sel=selectedRows['userTable'];if(!sel){setStatus('Select a row','warn');return}const pwd=prompt('New password for '+sel.data[0]+':');if(!pwd)return;try{const msg=await api('POST','/users/'+sel.data[0]+'/reset-password',{newPassword:pwd});setStatus(msg,'ok')}catch(e){}}
 
-// ── TAB 8: SCHEDULER ──────────────────────────────────────────────────────────
-async function schRefresh(){try{const rows=await api('GET','/scheduler');const tb=document.querySelector('#schTable tbody');tb.innerHTML='';rows.forEach((row,i)=>{const v=Object.values(row);const tr=document.createElement('tr');tr.innerHTML=`<td>${v[0]||''}</td><td>${statusBadge(v[1])}</td><td>${v[2]||''}</td><td style="font-size:11px">${v[3]||''}</td><td>${v[4]||''}</td><td>${v[5]||''}</td><td>${v[6]||''}</td>`;tr.onclick=()=>{document.querySelectorAll('#schTable tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows['schTable']={index:i,data:v};};tb.appendChild(tr);});setStatus('Jobs: '+rows.length,'ok');}catch(e){}}
-async function schEnable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/enable');setStatus(msg,'ok');schRefresh();}catch(e){}}
-async function schDisable(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Disable '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/disable');setStatus(msg,'ok');schRefresh();}catch(e){}}
-async function schRunNow(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Run '+sel.data[0]+' now?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/run-now');setStatus(msg,'ok');schRefresh();}catch(e){}}
-async function schStop(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}if(!confirm('Stop '+sel.data[0]+'?'))return;try{const msg=await api('POST','/scheduler/'+encodeURIComponent(sel.data[0])+'/stop');setStatus(msg,'ok');schRefresh();}catch(e){}}
-async function schHistory(){const sel=selectedRows['schTable'];if(!sel){setStatus('Select a job','warn');return;}try{const rows=await api('GET','/scheduler/'+encodeURIComponent(sel.data[0])+'/history');fillTable('schHistTable',rows);document.getElementById('schHistTitle').textContent='Job History: '+sel.data[0];document.getElementById('schHistCard').style.display='block';setStatus('History: '+rows.length,'ok');}catch(e){}}
-
-// ── TAB 9: HEALTH ─────────────────────────────────────────────────────────────
-async function healthRefresh(){try{const rows=await api('GET','/health/urls');fillTable('healthTable',rows);}catch(e){}}
-async function healthTestUrl(){const url=document.getElementById('h-url').value.trim();const name=document.getElementById('h-name').value.trim()||url;if(!url){setStatus('Enter a URL','warn');return;}setStatus('Testing '+url+'...');try{const d=await api('POST','/health/test',{url,name});const res=document.getElementById('healthResult');res.style.display='block';res.style.color=d.ok?'#27ae60':'#e74c3c';res.innerHTML=`<b>${name}</b><br>URL: ${url}<br>Status: ${d.statusCode||'ERROR'}<br>Time: ${d.elapsedMs}ms${d.error?'<br>Error: '+d.error:''}`;setStatus(name+' — HTTP '+(d.statusCode||'ERR')+' '+(d.elapsedMs||'')+'ms',d.ok?'ok':'err');}catch(e){}}
-async function healthTestToken(){try{const codes=await api('GET','/credentials/codes');if(!codes.length){setStatus('No active credentials','warn');return;}const cc=prompt('Cred Code:\n'+codes.join(', '),codes[0]);if(!cc)return;setStatus('Testing token...');const d=await api('POST','/health/test-token',{credCode:cc});setStatus(d.result,d.ok?'ok':'err');alert(d.result);}catch(e){}}
-
-async function healthTestPush() {
-  if (!confirm('This will trigger RUN_OUTBOUND_JOB immediately for all active services.\nContinue?')) return;
-  setStatus('Triggering test push...');
-  try {
-    const d = await api('POST', '/health/test-push');
-    const res = document.getElementById('healthResult');
-    res.style.display = 'block';
-    res.style.color = d.ok ? '#27ae60' : '#e74c3c';
-    res.innerHTML = '<b>Test Push Result</b><br>' + (d.result||'Triggered — check Monitor tab for records');
-    setStatus(d.result, d.ok ? 'ok' : 'err');
-  } catch(e) {}
-}
-
-// ── TAB: USERS ────────────────────────────────────────────────────────────────
-async function loadSvcChips() {
-  try {
-    allServices = await api('GET', '/monitor/service-names');
-    renderSvcChips([]);
-  } catch(e) {}
-}
-
-function renderSvcChips(assigned) {
-  assignedServices = assigned || [];
-  const container = document.getElementById('svcChips');
-  container.innerHTML = allServices.map(s => {
-    const on = assignedServices.includes(s);
-    return `<div class="svc-chip ${on?'assigned':''}" onclick="toggleSvc(this,'${s}')">${s}</div>`;
-  }).join('');
-}
-
-function assignAllSvc() {
-  assignedServices = [...allServices];
-  document.querySelectorAll('#svcChips .svc-chip').forEach(c => c.classList.add('assigned'));
-}
-
-function clearAllSvc() {
-  assignedServices = [];
-  document.querySelectorAll('#svcChips .svc-chip').forEach(c => c.classList.remove('assigned'));
-}
-
-function toggleSvc(el, svc) {
-  el.classList.toggle('assigned');
-  if (el.classList.contains('assigned')) {
-    if (!assignedServices.includes(svc)) assignedServices.push(svc);
-  } else {
-    assignedServices = assignedServices.filter(s => s !== svc);
-  }
-}
-
-async function userRefresh() {
-  try {
-    const rows = await api('GET', '/users');
-    const tb = document.querySelector('#userTable tbody');
-    tb.innerHTML = '';
-    rows.forEach((row, i) => {
-      const v = Object.values(row);
-      const tr = document.createElement('tr');
-      const roleCls = 'role-' + (v[2]||'VIEWER');
-      tr.innerHTML = `<td>${v[0]||''}</td><td>${v[1]||''}</td>
-        <td><span class="role-badge ${roleCls}">${v[2]||''}</span></td>
-        <td>${statusBadge(v[3])}</td>
-        <td style="font-size:11px">${v[4]||'All'}</td>
-        <td>${v[5]||''}</td><td>${v[6]||''}</td>`;
-      tr.onclick = () => {
-        document.querySelectorAll('#userTable tr.selected').forEach(r=>r.classList.remove('selected'));
-        tr.classList.add('selected');
-        selectedRows['userTable'] = {index:i, data:v};
-      };
-      tr.ondblclick = () => { tr.click(); userLoadSelected(); };
-      tb.appendChild(tr);
-    });
-    setStatus('Users: ' + rows.length, 'ok');
-  } catch(e) {}
-}
-
-function userLoadSelected() {
-  const sel = selectedRows['userTable'];
-  if (!sel) { setStatus('Select a row', 'warn'); return; }
-  const v = sel.data;
-  document.getElementById('u-username').value = v[0]||'';
-  document.getElementById('u-fullName').value = v[1]||'';
-  document.getElementById('u-password').value = '';
-  document.getElementById('u-role').value = v[2]||'VIEWER';
-  document.getElementById('u-isActive').value = v[3]||'Y';
-  const svcs = v[4] && v[4] !== 'All' ? v[4].split(',').map(s=>s.trim()) : [];
-  renderSvcChips(svcs);
-  setStatus('Loaded ' + v[0], 'ok');
-}
-
-function userClear() {
-  ['u-username','u-fullName','u-password'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('u-role').value='VIEWER';
-  document.getElementById('u-isActive').value='Y';
-  renderSvcChips([]);
-}
-
-async function userSave() {
-  const body = {
-    username: document.getElementById('u-username').value.trim().toLowerCase(),
-    fullName: document.getElementById('u-fullName').value.trim(),
-    password: document.getElementById('u-password').value.trim(),
-    role: document.getElementById('u-role').value,
-    isActive: document.getElementById('u-isActive').value,
-    services: assignedServices.join(',')
-  };
-  if (!body.username) { setStatus('Username required', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/users', body);
-    setStatus(msg, 'ok'); userClear(); userRefresh();
-  } catch(e) {}
-}
-
-async function userToggle(val) {
-  const sel = selectedRows['userTable'];
-  if (!sel) { setStatus('Select a row', 'warn'); return; }
-  try {
-    const msg = await api('POST', '/users/' + sel.data[0] + '/toggle', {isActive: val});
-    setStatus(msg, 'ok'); userRefresh();
-  } catch(e) {}
-}
-
-async function userResetPwd() {
-  const sel = selectedRows['userTable'];
-  if (!sel) { setStatus('Select a row', 'warn'); return; }
-  const pwd = prompt('New password for ' + sel.data[0] + ':');
-  if (!pwd) return;
-  try {
-    const msg = await api('POST', '/users/' + sel.data[0] + '/reset-password', {newPassword: pwd});
-    setStatus(msg, 'ok');
-  } catch(e) {}
-}
-
-// ── TAB 10: TEST PUSH ─────────────────────────────────────────────────────────
-async function tpLoadServices() {
-  try {
-    const names = await api('GET', '/monitor/service-names');
-    const sel = document.getElementById('tp-service');
-    sel.innerHTML = '<option value="">-- Select Service --</option>' +
-      names.map(n => `<option>${n}</option>`).join('');
-  } catch(e) {}
-}
-
-async function testPushRecord() {
-  const svc = document.getElementById('tp-service').value;
-  const key = document.getElementById('tp-keyValue').value.trim();
-  if (!svc) { setStatus('Select a service', 'warn'); return; }
-  if (!key) { setStatus('Enter a key value', 'warn'); return; }
-  if (!confirm('Push to CRM?\n\nService  : ' + svc + '\nKey Value: ' + key + '\n\nThis sends a LIVE push to CRM via APIC.\nUse only with valid test data.')) return;
-  setStatus('Pushing ' + svc + ' key=' + key + '...', '');
-  const start = Date.now();
-  try {
-    const d = await api('POST', '/testpush/push', {serviceName: svc, keyValue: key});
-    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
-    const pushedAt = new Date().toLocaleTimeString();
-    const ok = d.logId > 0;
-    const detail = 'Service    : ' + svc + '\nKey Value  : ' + key +
-      '\nRegistry ID: ' + d.registryId + '\nLog ID     : ' + d.logId +
-      '\nTime       : ' + elapsed + ' sec\nPushed At  : ' + pushedAt +
-      '\n\nCheck Monitor tab for final status.';
-    const tb = document.querySelector('#tpTable tbody');
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${svc}</td><td>${key}</td>
-      <td><span class="badge badge-${ok?'green':'red'}">${ok?'SENT':'ERROR'}</span></td>
-      <td>${elapsed}s</td><td>${d.logId||'--'}</td><td>${pushedAt}</td>`;
-    tr.onclick = () => {
-      document.getElementById('tpDetail').textContent = detail;
-      document.getElementById('tpDetailCard').style.display = 'block';
-    };
-    tb.insertBefore(tr, tb.firstChild);
-    document.getElementById('tpDetail').textContent = detail;
-    document.getElementById('tpDetailCard').style.display = 'block';
-    setStatus(svc + ' pushed — Log ID: ' + d.logId + ' (' + elapsed + 's) — check Monitor', ok ? 'ok' : 'err');
-    if (ok) alert('Push submitted!\n\nService  : ' + svc + '\nKey Value: ' + key + '\nLog ID   : ' + d.logId + '\n\nCheck Monitor tab for final status.');
-  } catch(e) {
-    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
-    const tb = document.querySelector('#tpTable tbody');
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${svc}</td><td>${key}</td><td><span class="badge badge-red">ERROR</span></td><td>${elapsed}s</td><td>--</td><td>${new Date().toLocaleTimeString()}</td>`;
-    tb.insertBefore(tr, tb.firstChild);
-  }
-}
-
-function testPushClear() {
-  document.querySelector('#tpTable tbody').innerHTML = '';
-  document.getElementById('tpDetailCard').style.display = 'none';
-  document.getElementById('tpDetail').textContent = '';
-}
-
-// ── TAB 7: SCRIPT DOWNLOAD ────────────────────────────────────────────────────
-async function scriptGenerate() {
-  const section = document.getElementById('sc-section').value;
-  setStatus('Generating script...');
-  try {
-    const d = await api('GET', '/scripts/generate?section=' + section);
-    document.getElementById('scOutput').value = d.script || '';
-    const lines = (d.script || '').split('\n').length;
-    document.getElementById('scLineCount').textContent = lines + ' lines';
-    setStatus('Script generated: ' + lines + ' lines', 'ok');
-  } catch(e) {}
-}
-
-function scriptDownload() {
-  const content = document.getElementById('scOutput').value;
-  if (!content.trim()) { setStatus('Generate script first', 'warn'); return; }
-  const section = document.getElementById('sc-section').value;
-  const ts = new Date().toISOString().replace(/[-T:.Z]/g,'').substring(0,14);
-  const filename = 'CRM_Script_' + section + '_' + ts + '.sql';
-  const blob = new Blob([content], {type: 'text/plain'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  setStatus('Downloaded: ' + filename, 'ok');
-}
-
-function scriptClear() {
-  document.getElementById('scOutput').value = '';
-  document.getElementById('scLineCount').textContent = '';
-}
-
-// ── STARTUP ───────────────────────────────────────────────────────────────────
-window.onload = () => { ping(); loadCurrentUser(); credRefresh(); };
+// STARTUP
+window.onload=()=>{ping();loadCurrentUser();credRefresh();wizInit()};
 </script>
 </body>
 </html>
