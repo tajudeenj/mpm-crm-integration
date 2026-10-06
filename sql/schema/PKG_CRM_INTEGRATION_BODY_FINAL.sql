@@ -2104,10 +2104,10 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                 v_wallet_pwd  := NULL;
         END;
 
-        -- Load only TRUE updates: exclude records where nothing changed
+        -- Load all records into collection
+        -- Note: view already handles required filtering
         v_sql := 'SELECT UNIT_CODE, CUSTOMER_ID, CUSTOMER_NAME ' ||
                  'FROM XXMPM_CRM_LEASED_UNIT_TENANTS ' ||
-                 'WHERE CREATION_DATE <> LAST_UPDATE_DATE ' ||
                  'ORDER BY UNIT_CODE';
 
         v_cursor_id := DBMS_SQL.OPEN_CURSOR;
@@ -2334,10 +2334,9 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                 v_wallet_pwd  := NULL;
         END;
 
-        -- Load only TRUE updates: exclude records where nothing changed
-        v_sql := 'SELECT UNIT_ID FROM XXMPM_CRM_UNIT_STATUS_UPDATE_V ' ||
-                 'WHERE CREATION_DATE <> LAST_UPDATE_DATE ' ||
-                 'ORDER BY UNIT_ID';
+        -- Load ALL unit IDs into collection
+        -- Note: XXMPM_CRM_UNIT_STATUS_UPDATE_V already filters CREATION_DATE <> LAST_UPDATE_DATE
+        v_sql := 'SELECT UNIT_ID FROM XXMPM_CRM_UNIT_STATUS_UPDATE_V ORDER BY UNIT_ID';
         v_cursor_id := DBMS_SQL.OPEN_CURSOR;
         DBMS_SQL.PARSE(v_cursor_id, v_sql, DBMS_SQL.NATIVE);
         DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_unit_id, 200);
@@ -2556,10 +2555,10 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                 v_wallet_pwd  := NULL;
         END;
 
-        -- Load only TRUE updates: exclude records where nothing changed
+        -- Load all records from consolidated view
+        -- Note: view already handles required filtering
         v_sql := 'SELECT UNIT_ID, UNIT_STATUS, CUSTOMERTYPE, TENANTID ' ||
                  'FROM XXMPM_CRM_ALL_UNIT_STATUS_V ' ||
-                 'WHERE CREATION_DATE <> LAST_UPDATE_DATE ' ||
                  'ORDER BY UNIT_STATUS, UNIT_ID';
 
         v_cursor_id := DBMS_SQL.OPEN_CURSOR;
