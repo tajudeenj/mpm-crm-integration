@@ -256,6 +256,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
             <label>Source Proc</label><input id="r-sourceProc">
             <label>Filter Column</label><input id="r-sourceFilterCol">
             <label>Key Column</label><input id="r-sourceKeyCol">
+            <label>Extra Filter</label><input id="r-sourceExtraFilter" placeholder="e.g. CREATION_DATE &lt;&gt; LAST_UPDATE_DATE">
           </div>
         </div>
         <div style="margin-bottom:12px">
@@ -331,6 +332,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
             <label>Source Type</label><select id="w-sourceType"><option>VIEW</option><option>PROC</option><option>TABLE</option></select>
             <label>Source View/Proc <span class="required">*</span></label><input id="w-sourceView" placeholder="e.g. XXMPM_CRM_BUILDING_V">
             <label>Key Column <span class="required">*</span></label><input id="w-sourceKeyCol" placeholder="e.g. BUILDING_ID">
+            <label>Extra Filter</label><input id="w-sourceExtraFilter" placeholder="e.g. CREATION_DATE &lt;&gt; LAST_UPDATE_DATE (UPDATE services only)">
             <label>JSON Mapping <span class="required">*</span></label><input id="w-jsonMappingName" placeholder="e.g. BUILDING_CREATE_MAP">
             <label>APIC Endpoint URL <span class="required">*</span></label><input id="w-apicEndpointUrl" placeholder="https://apic.adib.ae/api/v1/building">
             <label>Record Type Header</label><input id="w-recordTypeHdr">

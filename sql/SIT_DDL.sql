@@ -148,3 +148,21 @@ WHERE JOB_NAME LIKE 'CRM_MPM%'
 ORDER BY JOB_NAME;
 
 PROMPT -- END OF DDL SCRIPT
+
+-- ============================================================
+-- ADD SOURCE_EXTRA_FILTER column to CRM_MPM_API_REGISTRY
+-- Run once on DEV and SIT
+-- ============================================================
+ALTER TABLE CRM_MPM_API_REGISTRY
+ADD SOURCE_EXTRA_FILTER VARCHAR2(500);
+
+COMMENT ON COLUMN CRM_MPM_API_REGISTRY.SOURCE_EXTRA_FILTER IS
+'Optional extra WHERE condition appended to outbound query. Example for UPDATE services: CREATION_DATE <> LAST_UPDATE_DATE';
+
+-- For UPDATE services that need the extra filter, run:
+-- UPDATE CRM_MPM_API_REGISTRY
+-- SET SOURCE_EXTRA_FILTER = 'CREATION_DATE <> LAST_UPDATE_DATE'
+-- WHERE OPERATION_TYPE = 'UPDATE'
+-- AND SERVICE_NAME IN ('YOUR_SERVICE_NAME');
+-- COMMIT;
+

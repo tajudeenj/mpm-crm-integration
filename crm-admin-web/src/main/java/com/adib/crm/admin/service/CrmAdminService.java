@@ -129,6 +129,7 @@ public class CrmAdminService {
         return jdbc.queryForList(
             "SELECT SERVICE_NAME,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE," +
             "NVL(SOURCE_VIEW,''),NVL(SOURCE_PROC,''),NVL(SOURCE_FILTER_COL,''),NVL(SOURCE_KEY_COL,'')," +
+            "NVL(SOURCE_EXTRA_FILTER,'')," +
             "NVL(JSON_MAPPING_NAME,''),NVL(RECORD_TYPE_HDR,''),NVL(EVENT_CODE_HDR,'')," +
             "NVL(APIC_ENDPOINT_URL,''),NVL(HTTP_METHOD,''),NVL(APIC_API_VERSION,'')," +
             "NVL(CALLBACK_TARGET_TABLE,''),NVL(CALLBACK_KEY_COL,'')," +
@@ -144,6 +145,7 @@ public class CrmAdminService {
             "MERGE INTO CRM_MPM_API_REGISTRY r USING (SELECT ? AS sn FROM DUAL) s ON (r.SERVICE_NAME=s.sn) " +
             "WHEN MATCHED THEN UPDATE SET ENTITY_NAME=?,OPERATION_TYPE=?,SOURCE_TYPE=?," +
             "SOURCE_VIEW=?,SOURCE_PROC=?,SOURCE_FILTER_COL=?,SOURCE_KEY_COL=?," +
+            "SOURCE_EXTRA_FILTER=?," +
             "JSON_MAPPING_NAME=?,RECORD_TYPE_HDR=?,EVENT_CODE_HDR=?," +
             "APIC_ENDPOINT_URL=?,HTTP_METHOD=?,APIC_API_VERSION=?," +
             "CALLBACK_TARGET_TABLE=?,CALLBACK_KEY_COL=?,CALLBACK_STATUS_COL=?,CALLBACK_REF_COL=?," +
@@ -152,17 +154,19 @@ public class CrmAdminService {
             "RETRY_INTERVAL_MINUTES=TO_NUMBER(?),TIMEOUT_MINUTES=TO_NUMBER(?),IS_ACTIVE=?,UPDATED_DATE=SYSDATE " +
             "WHEN NOT MATCHED THEN INSERT (" +
             "SERVICE_NAME,ENTITY_NAME,OPERATION_TYPE,SOURCE_TYPE,SOURCE_VIEW,SOURCE_PROC," +
-            "SOURCE_FILTER_COL,SOURCE_KEY_COL,JSON_MAPPING_NAME,RECORD_TYPE_HDR,EVENT_CODE_HDR," +
+            "SOURCE_FILTER_COL,SOURCE_KEY_COL,SOURCE_EXTRA_FILTER," +
+            "JSON_MAPPING_NAME,RECORD_TYPE_HDR,EVENT_CODE_HDR," +
             "APIC_ENDPOINT_URL,HTTP_METHOD,APIC_API_VERSION,CALLBACK_TARGET_TABLE,CALLBACK_KEY_COL," +
             "CALLBACK_STATUS_COL,CALLBACK_REF_COL,POST_CALLBACK_PROC,CRED_CODE," +
             "EXECUTION_ORDER,BATCH_SIZE,MAX_RETRY_COUNT,RETRY_INTERVAL_MINUTES,TIMEOUT_MINUTES,IS_ACTIVE," +
             "CREATED_DATE,UPDATED_DATE) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," +
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," +
             "TO_NUMBER(?),TO_NUMBER(?),TO_NUMBER(?),TO_NUMBER(?),TO_NUMBER(?),?,SYSDATE,SYSDATE)";
         Object[] p = {
             b.get("serviceName"),
             b.get("entityName"),b.get("operationType"),b.get("sourceType"),
             n(b.get("sourceView")),n(b.get("sourceProc")),n(b.get("sourceFilterCol")),n(b.get("sourceKeyCol")),
+            n(b.get("sourceExtraFilter")),
             n(b.get("jsonMappingName")),n(b.get("recordTypeHdr")),n(b.get("eventCodeHdr")),
             n(b.get("apicEndpointUrl")),n(b.get("httpMethod")),n(b.get("apicApiVersion")),
             n(b.get("callbackTargetTable")),n(b.get("callbackKeyCol")),
@@ -174,6 +178,7 @@ public class CrmAdminService {
             b.get("serviceName"),
             b.get("entityName"),b.get("operationType"),b.get("sourceType"),
             n(b.get("sourceView")),n(b.get("sourceProc")),n(b.get("sourceFilterCol")),n(b.get("sourceKeyCol")),
+            n(b.get("sourceExtraFilter")),
             n(b.get("jsonMappingName")),n(b.get("recordTypeHdr")),n(b.get("eventCodeHdr")),
             n(b.get("apicEndpointUrl")),n(b.get("httpMethod")),n(b.get("apicApiVersion")),
             n(b.get("callbackTargetTable")),n(b.get("callbackKeyCol")),

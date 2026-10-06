@@ -868,10 +868,17 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
 
             v_max_ts := reg.LAST_PROCESSED_TS;
 
+            -- Build dynamic SQL with optional extra filter
+            -- SOURCE_EXTRA_FILTER can hold any additional WHERE condition
+            -- e.g. for UPDATE services: CREATION_DATE <> LAST_UPDATE_DATE
             v_sql := 'SELECT ' || reg.SOURCE_KEY_COL || ', ' || reg.SOURCE_FILTER_COL ||
                      ' FROM '  || reg.SOURCE_VIEW ||
                      ' WHERE ' || reg.SOURCE_FILTER_COL || ' > :wm' ||
-                     -- ' WHERE (:wm IS NULL or ' || reg.SOURCE_FILTER_COL || ' > :wm )' ||
+                     CASE
+                         WHEN reg.SOURCE_EXTRA_FILTER IS NOT NULL
+                         THEN ' AND ' || reg.SOURCE_EXTRA_FILTER
+                         ELSE ''
+                     END ||
                      ' ORDER BY ' || reg.SOURCE_FILTER_COL;
 
             v_cursor_id := DBMS_SQL.OPEN_CURSOR;
@@ -941,7 +948,12 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
             BEGIN
                 EXECUTE IMMEDIATE
                     'SELECT MAX(' || reg.SOURCE_FILTER_COL || ') FROM ' || reg.SOURCE_VIEW ||
-                    ' WHERE ' || reg.SOURCE_FILTER_COL || ' > :wm'
+                    ' WHERE ' || reg.SOURCE_FILTER_COL || ' > :wm' ||
+                    CASE
+                        WHEN reg.SOURCE_EXTRA_FILTER IS NOT NULL
+                        THEN ' AND ' || reg.SOURCE_EXTRA_FILTER
+                        ELSE ''
+                    END
                     INTO v_max_ts
                     USING reg.LAST_PROCESSED_TS;
 
