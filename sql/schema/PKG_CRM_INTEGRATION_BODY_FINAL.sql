@@ -828,6 +828,7 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
         v_key_val    VARCHAR2(4000);
         v_filter_val VARCHAR2(4000);
         v_status     VARCHAR2(20);
+        v_skipped    NUMBER := 0;  -- records skipped due to parent dependency
         -- FIX: local var to capture SQLERRM before DML
         v_err_msg    VARCHAR2(4000);
     BEGIN
@@ -897,6 +898,49 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
 
                 v_processed := v_processed + 1;
 
+                -- -----------------------------------------------
+                -- SEQUENTIAL DEPENDENCY CHECK (CREATE services)
+                -- If DEPENDS_ON_REGISTRY_ID is set, check parent
+                -- SUCCESS before sending this record
+                -- -----------------------------------------------
+                IF reg.DEPENDS_ON_REGISTRY_ID IS NOT NULL
+                AND reg.PARENT_LINK_COL IS NOT NULL THEN
+                    DECLARE
+                        v_parent_key   VARCHAR2(500);
+                        v_parent_count NUMBER := 0;
+                    BEGIN
+                        -- Read parent key value from source view
+                        EXECUTE IMMEDIATE
+                            'SELECT ' || reg.PARENT_LINK_COL ||
+                            ' FROM ' || reg.SOURCE_VIEW ||
+                            ' WHERE ' || reg.SOURCE_KEY_COL || ' = :k'
+                            INTO v_parent_key
+                            USING v_key_val;
+
+                        -- Check parent is SUCCESS in integration log
+                        SELECT COUNT(*) INTO v_parent_count
+                        FROM   CRM_MPM_CRM_INTEGRATION_LOG
+                        WHERE  REGISTRY_ID      = reg.DEPENDS_ON_REGISTRY_ID
+                        AND    SOURCE_RECORD_ID = v_parent_key
+                        AND    FINAL_STATUS     = 'SUCCESS';
+
+                        IF v_parent_count = 0 THEN
+                            -- Parent not SUCCESS yet — skip this record
+                            v_skipped := NVL(v_skipped, 0) + 1;
+                            GOTO next_record;
+                        END IF;
+
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN
+                            -- Cannot find parent key — skip
+                            v_skipped := NVL(v_skipped, 0) + 1;
+                            GOTO next_record;
+                        WHEN OTHERS THEN
+                            -- Log error but continue
+                            NULL;
+                    END;
+                END IF;
+
                 BEGIN
                     SEND_TO_APIC(
                         p_registry_id => reg.REGISTRY_ID,
@@ -939,6 +983,10 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                     WHEN OTHERS THEN
                         v_failed := v_failed + 1;
                 END;
+
+                <<next_record>>
+                NULL; -- GOTO target for dependency skip
+
             END LOOP;
 
             DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
