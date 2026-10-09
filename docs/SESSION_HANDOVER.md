@@ -251,7 +251,8 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 1b. Recompile spec + body from sql/schema/ (now include RELEASE_PARENT_PENDING)
     OR apply only changes 4-6 via sql/SIT_PARENT_RELEASE_DEPLOY.sql — REQUIRED,
     without it children stay PARENT_PENDING forever
-2. Insert PARENT_PENDING and PARENT_FAILED error codes (see below)
+2. Insert PARENT_PENDING and PARENT_FAILED error codes
+   (run sql/SIT_ERROR_CODES_DEPENDENCY.sql — idempotent MERGE, both IS_RETRYABLE='N')
 3. Change outbound job to 15 min interval
 4. Test one full Property→Building→Floor→Unit chain on SIT
    (watch it in web app: Chain Status tab; expect ~4 x (callback + 15 min))
@@ -419,6 +420,7 @@ END;
 | sql/schema/PKG_CRM_INTEGRATION_BODY_FINAL.sql | Full package body |
 | sql/schema/PKG_CRM_INTEGRATION_SPEC_V2.sql | Package spec |
 | docs/PACKAGE_CHANGES_SNIPPET.sql | ONLY 3 changes for SIT package |
+| sql/SIT_ERROR_CODES_DEPENDENCY.sql | PARENT_PENDING / PARENT_FAILED error codes |
 | sql/SIT_PARENT_RELEASE_DEPLOY.sql | Changes 4-6: PARENT_PENDING release pass |
 | crm-admin-web/src/main/resources/queries.properties | ALL web app SQL |
 | crm-admin-web/src/main/java/com/adib/crm/admin/config/QueryStore.java | Loads queries |
