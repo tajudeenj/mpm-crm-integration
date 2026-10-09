@@ -236,6 +236,17 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 
 ## CURRENT STATUS (09-Oct-2026)
 
+### SIT deployment — DONE 09/10-Oct-2026 (Tajudeen)
+- ✅ Error codes: PARENT_PENDING, PARENT_FAILED, MANUAL_RETRY (category CHECK constraint dropped on SIT)
+- ✅ Package changes 1-6 applied, spec + body compiled VALID
+- ✅ Outbound scheduler job at 15 min
+- ⏳ NEXT: rebuild web app (crm-admin-web: mvn clean package -DskipTests), git pull
+- ⏳ NEXT: run Property->Building->Floor->Unit chain test, watch Chain Status tab
+- ⏳ OPEN: send SOURCE_FILTER_COL for registry 22-29 — decides fix for
+  'MPM fixes failed CREATE -> UPDATE also fires -> false RECORD_NOT_FOUND'
+  (proposed: UPDATE service DEPENDS_ON its own CREATE via existing mechanism)
+
+
 ### Working on SIT ✅
 - Package VALID, deployed
 - Token authentication working
