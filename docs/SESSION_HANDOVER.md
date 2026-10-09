@@ -1,133 +1,262 @@
-# MPM CRM Integration — Complete Session Handover
+# MPM CRM Integration — Complete Project Handover
 **Last Updated:** 09-Oct-2026
 **Project:** ADIB MPM Properties CRM/xRM Integration
 **GitHub:** https://github.com/tajudeenj/mpm-crm-integration
 **Developer:** Tajudeen Jalaudin, Senior Solution Architect, ADIB
+**Sessions:** 8 sessions from Jul-2026 to Oct-2026
 
 ---
 
 ## HOW TO USE THIS DOCUMENT
-When starting a new session, say:
-"Read docs/SESSION_HANDOVER.md from https://github.com/tajudeenj/mpm-crm-integration and continue"
+When starting a new session paste:
+"Read docs/SESSION_HANDOVER.md from https://github.com/tajudeenj/mpm-crm-integration
+and continue. I am Tajudeen, Senior Solution Architect at ADIB working on
+MPM Properties CRM integration."
+
+---
+
+## PROJECT OVERVIEW
+Oracle EBS/Fusion → IBM APIC → Microsoft Dynamics 365 CRM integration
+for ADIB MPM Properties. Pushes master data (Property, Building, Floor,
+Unit, Tenant) and transactional data (Work Requests) from Oracle to CRM.
+Callbacks from CRM update Oracle log with SUCCESS/FAILED status.
+
+---
+
+## ARCHITECTURE
+
+### Technology Stack
+- Source: Oracle EBS/Fusion (APPS schema)
+- Integration Package: PKG_CRM_INTEGRATION (Oracle PL/SQL)
+- Transport: IBM APIC (API Connect) + IBM ESB/DataPower
+- Target: Microsoft Dynamics 365 CRM
+- Admin Tool: Java Swing (standalone) + Spring Boot Web
+- Encryption: Oracle DBMS_CRYPTO AES-256
+- Wallet: Oracle Wallet (UTL_HTTP SSL)
+
+### Flow — Outbound
+```
+Oracle Source View
+    → RUN_OUTBOUND_JOB (watermark-based)
+    → BUILD_JSON_PAYLOAD
+    → GET_BEARER_TOKEN (OAuth2 client_credentials)
+    → SEND_TO_APIC (UTL_HTTP POST)
+    → CRM_MPM_CRM_INTEGRATION_LOG (status=SENT)
+    → APIC → Dynamics 365 CRM
+    → Callback → PROCESS_CRM_CALLBACK
+    → Log updated (SUCCESS/FAILED/VALIDATION_FAILED)
+```
+
+### Flow — Retry
+```
+RUN_RETRY_JOB
+    → Picks FAILED records where NEXT_RETRY_DATE <= SYSDATE
+    → Re-sends via SEND_TO_APIC
+    → Max MAX_RETRY_COUNT attempts
+    → Then EXHAUSTED
+```
+
+### Flow — Timeout
+```
+RUN_TIMEOUT_JOB
+    → Picks SENT records older than TIMEOUT_MINUTES
+    → Marks as TIMEOUT
+    → Retry job picks up and re-sends
+```
+
+---
+
+## DATABASE TABLES
+
+### Core Tables
+| Table | Purpose |
+|-------|---------|
+| CRM_MPM_API_REGISTRY | Service configuration — one row per integration service |
+| CRM_MPM_API_CREDENTIALS | APIC OAuth credentials (encrypted) |
+| CRM_MPM_API_FIELD_MAPPING | JSON field mappings per service |
+| CRM_MPM_API_WATERMARK | Last processed timestamp per service |
+| CRM_MPM_ERROR_CODE_MASTER | Error codes and retry flags |
+| CRM_MPM_CRM_INTEGRATION_LOG | Main integration log — every sent record |
+| CRM_MPM_CALLBACK_AUDIT_LOG | Raw callback payloads from CRM |
+| CRM_MPM_CONFIG_STORE | Key-value config store |
+| CRM_MPM_ENCRYPT_CONFIG | AES-256 encryption key |
+| CRM_MPM_APP_USERS | Web admin tool users (BCrypt passwords) |
+| CRM_MPM_JOB_RUN_HISTORY | Scheduler job run history |
+
+### Registry Columns (Key Ones)
+| Column | Purpose |
+|--------|---------|
+| SERVICE_NAME | Unique service identifier |
+| SOURCE_VIEW | Oracle view/table to read from |
+| SOURCE_KEY_COL | Column used as SOURCE_RECORD_ID in log |
+| SOURCE_FILTER_COL | Watermark column (LAST_UPDATE_DATE etc) |
+| SOURCE_EXTRA_FILTER | Additional WHERE condition (e.g. CREATION_DATE<>LAST_UPDATE_DATE) |
+| DEPENDS_ON_REGISTRY_ID | Parent registry ID (sequential dependency) |
+| PARENT_LINK_COL | Column in child view = parent SOURCE_RECORD_ID |
+| JSON_MAPPING_NAME | Links to CRM_MPM_API_FIELD_MAPPING |
+| APIC_ENDPOINT_URL | Target APIC URL (no ?api-version suffix) |
+| CRED_CODE | Links to CRM_MPM_API_CREDENTIALS |
+| TIMEOUT_MINUTES | 60 (vendor confirmed max callback time) |
+| RETRY_INTERVAL_MINUTES | 10 |
+| MAX_RETRY_COUNT | 3 |
+
+---
+
+## PACKAGE: PKG_CRM_INTEGRATION
+
+### File: sql/schema/PKG_CRM_INTEGRATION_BODY_FINAL.sql
+### Spec: sql/schema/PKG_CRM_INTEGRATION_SPEC_V2.sql
+
+### Key Procedures
+| Procedure | Purpose |
+|-----------|---------|
+| RUN_OUTBOUND_JOB | Main outbound — watermark-based, all VIEW services |
+| RUN_RETRY_JOB | Retry FAILED records |
+| RUN_TIMEOUT_JOB | Mark SENT records as TIMEOUT after TIMEOUT_MINUTES |
+| SEND_TO_APIC | Core HTTP send — gets token, builds payload, posts |
+| GET_BEARER_TOKEN | OAuth2 token from APIC |
+| BUILD_JSON_PAYLOAD | Dynamic JSON from field mappings |
+| PROCESS_CRM_CALLBACK | Handles callback from CRM — updates log |
+| PROCESS_STAGING_CALLBACK | Callback for staging-based services |
+| RUN_UNIT_STATUS_BATCH | Unit status batch push |
+| RUN_UNIT_UNAVAILABLE_BATCH | Unit unavailable batch push |
+| RUN_UNIT_UNAVAILABLE_AVAILABLE_BATCH | All unit status consolidated batch |
+
+### Important Fixes Applied (All Sessions)
+1. Runaway retry loop fix — RUN_RETRY_JOB marks RETRY_IN_PROGRESS before send
+2. Status 9999 override — force retry except DUPLICATE_RECORD
+3. 6 new CRM error codes in PROCESS_CRM_CALLBACK
+4. Date format — DD-MON-YYYY explicit mask (no ALTER SESSION)
+5. LENGTHB instead of LENGTH for Content-Length header
+6. SOURCE_EXTRA_FILTER — appended to outbound WHERE clause
+7. Sequential dependency check — PARENT_PENDING status (Oct 2026)
+
+---
+
+## ACTIVE SERVICES (14 rows IS_ACTIVE=Y)
+
+### CREATE Services
+| Registry ID | Entity | Source View | SOURCE_KEY_COL |
+|-------------|--------|------------|----------------|
+| 22 | Property | XXMPM_CRM_PROPERTY_CREATE_V | PROPERTY_CODE |
+| 24 | Building | XXMPM_CRM_BUILDING_CREATE_FULL_V | BUILDING_ID |
+| 26 | Floor | XXMPM_CRM_FLOOR_CREATE_V | FLOOR_ID |
+| 28 | Unit | XXMPM_CRM_UNIT_CREATE_V | UNIT_ID |
+| 62 | TenantPerson | XXMPM_CRM_TENANT_PERSON_V | CUSTOMER_ID |
+| 63 | TenantOrg | XXMPM_CRM_TENANT_ORG_V | CUSTOMER_ID |
+
+### UPDATE Services
+| Registry ID | Entity | Source View | SOURCE_KEY_COL |
+|-------------|--------|------------|----------------|
+| 23 | Property | XXMPM_CRM_PROPERTY_UPDATE_V | PROPERTY_CODE |
+| 25 | Building | XXMPM_CRM_BUILDING_UPDATE_FULL_V | UNIQUE_ID |
+| 27 | Floor | XXMPM_CRM_FLOOR_UPDATE_V | UNIQUE_ID |
+| 29 | Unit | XXMPM_CRM_UNIT_UPDATE_V | UNIT_ID |
+| 83 | Customer | NA (PROCEDURE) | oracle-customerid |
+| 122 | Unit Legal Lock | NA (PROCEDURE) | unitno |
+| 125 | WorkRequest | XXMPM_CRM_UPDATE_WORKREQ_V | UNIQUE_ID |
+| 141 | Unit All Status | XXMPM_CRM_ALL_UNIT_STATUS_V | UNIT_ID |
+
+### Sequential Dependency (CREATE only — confirmed Oct 2026)
+| Child Registry | Depends On | PARENT_LINK_COL |
+|----------------|------------|-----------------|
+| 24 Building | 22 Property | BUILDING_CODE |
+| 26 Floor | 24 Building | BUILDING_ID |
+| 28 Unit | 26 Floor | FLOOR_ID |
+
+### Key Relationship
+```
+Property PROPERTY_CODE = 'MA00810'
+Building BUILDING_CODE = 'MA00810'  ← same value
+Floor    BUILDING_ID   = 523118
+Unit     FLOOR_ID      = 523119
+```
+
+### SOURCE_EXTRA_FILTER (UPDATE services — not WorkRequest)
+```
+CREATION_DATE <> LAST_UPDATE_DATE
+Applied to: Registry 23, 25, 27, 29
+NOT applied to: 125 (WorkRequest), 83, 122, 141
+```
 
 ---
 
 ## ENVIRONMENT
-- DEV: Oracle DB — package deployed, ESB not connected
-- SIT: Oracle DB — active testing, ESB connected, CRM vendor testing here
-- ESB: IBM ESB/DataPower — only one instance, points to SIT
-- CRM: Microsoft Dynamics 365 via IBM APIC
-- Web Admin Tool: Spring Boot JAR running on Windows for now
+| Env | Purpose | ESB |
+|-----|---------|-----|
+| DEV | Development | Not connected |
+| SIT | System Integration Testing | Connected — only env |
 
 ---
 
-## CURRENT STATUS
+## ADMIN TOOLS
+
+### Java Swing (Standalone)
+- File: admin-tool/CrmAdminTool.java
+- 10 tabs: Credentials, Registry, Mappings, Watermark,
+  Error Codes, Monitor, Script Download, Scheduler,
+  Health Check, Test Push
+- Compile: javac + ojdbc8.jar
+- Config: admin-tool/crm-admin.properties (ALL SQL queries here)
+- Run: java -cp ... CrmAdminTool
+
+### Spring Boot Web
+- Folder: crm-admin-web/
+- Same 10 tabs + Users tab
+- Tech: Spring Boot 3.2 + Java 17
+- Compile: mvn clean package -DskipTests
+- Run: java -jar target/crm-admin-web-1.0.0.jar
+- URL: http://server:8080
+- Login: CRM_MPM_APP_USERS table (BCrypt)
+- DB config: application.properties (update before run)
+- KNOWN ISSUE: SQL queries hardcoded in CrmAdminService.java
+  (should be in properties file like standalone — not done yet)
+
+---
+
+## CURRENT STATUS (09-Oct-2026)
 
 ### Working on SIT ✅
-- Package deployed and VALID
+- Package VALID, deployed
 - Token authentication working
-- Building CREATE sending — HTTP 400 fixed (removed api-version from URL)
-- Callback receiving — ESB permission fixed (GRANT EXECUTE on PKG_CRM_INTEGRATION)
-- Web Admin Tool — compiled, running, login working
+- Outbound job running
+- Building CREATE working (fixed api-version URL issue)
+- Callback receiving (fixed ESB GRANT EXECUTE permission)
+- Web admin tool running
 
-### Pending / In Progress
-1. Sequential dependency testing (Property→Building→Floor→Unit)
-2. ESB callback URL pointing to DEV instead of SIT (ESB team action)
-3. PARENT_PENDING error code insert
-4. Web app improvements (error log tab, chain status view, queries in properties file)
+### Pending Actions
 
----
+#### Tajudeen (DBA/Package)
+1. Add 3 snippets to SIT package (file: docs/PACKAGE_CHANGES_SNIPPET.sql)
+2. Insert PARENT_PENDING and PARENT_FAILED error codes (see below)
+3. Change outbound job to 15 min interval
+4. Test one full Property→Building→Floor→Unit chain on SIT
 
-## SEQUENTIAL DEPENDENCY — VENDOR CONFIRMED DESIGN
+#### ESB Team
+5. Point SIT callback URL to SIT endpoint (currently pointing to DEV)
 
-### Flow (Confirmed with CRM vendor Oct 2026)
-```
-Property → SENT → callback SUCCESS
-                      ↓
-Building → SENT → callback SUCCESS  (only after Property SUCCESS)
-                      ↓
-Floor    → SENT → callback SUCCESS  (only after Building SUCCESS)
-                      ↓
-Unit     → SENT → callback SUCCESS  (only after Floor SUCCESS)
-```
-- Each property chain is INDEPENDENT
-- Multiple properties run in parallel
-- If parent FAILED — hold all children
-- Job runs every 15 minutes
-- Project = Property (no separate Project entity)
-
-### Registry IDs — CREATE Services
-| Registry ID | Entity | SOURCE_KEY_COL | DEPENDS_ON_REGISTRY_ID | PARENT_LINK_COL |
-|-------------|--------|---------------|----------------------|-----------------|
-| 22 | Property | PROPERTY_CODE | NULL | NULL |
-| 24 | Building | BUILDING_ID | 22 | BUILDING_CODE |
-| 26 | Floor | FLOOR_ID | 24 | BUILDING_ID |
-| 28 | Unit | UNIT_ID | 26 | FLOOR_ID |
-| 62 | TenantPerson | CUSTOMER_ID | NULL | NULL |
-| 63 | TenantOrg | CUSTOMER_ID | NULL | NULL |
-
-### Key Relationship (CRITICAL)
-```
-Property view:  PROPERTY_CODE = 'MA00810'
-Building view:  BUILDING_CODE = 'MA00810'  ← same value, different column name
-Floor view:     BUILDING_ID   = 523118     ← links to building
-Unit view:      FLOOR_ID      = 523119     ← links to floor
-```
-
-### WARNING
-- Property SOURCE_KEY_COL MUST be PROPERTY_CODE (not PROPERTY_ID)
-- BUILDING_CODE in building view = PROPERTY_CODE value (they match)
+#### Claude (Next Session)
+6. Move SQL queries from CrmAdminService.java to queries.properties
+7. Add Error Log viewer tab to web app
+8. Add Chain Status view (Property→Building→Floor→Unit per property)
+9. PARENT_PENDING display in Monitor tab
 
 ---
 
-## WHAT HAS BEEN DEPLOYED ON SIT
+## SNIPPETS TO ADD TO SIT PACKAGE
 
-### DDL Changes (already run)
-```sql
-ALTER TABLE CRM_MPM_API_REGISTRY ADD DEPENDS_ON_REGISTRY_ID NUMBER;
-ALTER TABLE CRM_MPM_API_REGISTRY ADD PARENT_LINK_COL VARCHAR2(100);
-ALTER TABLE CRM_MPM_API_REGISTRY ADD SOURCE_EXTRA_FILTER VARCHAR2(500);
-```
+### Full file: docs/PACKAGE_CHANGES_SNIPPET.sql
 
-### Registry Updates (already run)
-```sql
--- Sequential dependency
-UPDATE CRM_MPM_API_REGISTRY SET SOURCE_KEY_COL='PROPERTY_CODE',
-       DEPENDS_ON_REGISTRY_ID=NULL,PARENT_LINK_COL=NULL WHERE REGISTRY_ID=22;
-UPDATE CRM_MPM_API_REGISTRY SET
-       DEPENDS_ON_REGISTRY_ID=22,PARENT_LINK_COL='BUILDING_CODE' WHERE REGISTRY_ID=24;
-UPDATE CRM_MPM_API_REGISTRY SET
-       DEPENDS_ON_REGISTRY_ID=24,PARENT_LINK_COL='BUILDING_ID' WHERE REGISTRY_ID=26;
-UPDATE CRM_MPM_API_REGISTRY SET
-       DEPENDS_ON_REGISTRY_ID=26,PARENT_LINK_COL='FLOOR_ID' WHERE REGISTRY_ID=28;
-
--- Extra filter for UPDATE services (not WorkRequest)
-UPDATE CRM_MPM_API_REGISTRY
-SET SOURCE_EXTRA_FILTER='CREATION_DATE <> LAST_UPDATE_DATE'
-WHERE OPERATION_TYPE='UPDATE' AND SOURCE_TYPE='VIEW'
-AND SOURCE_FILTER_COL IS NOT NULL AND IS_ACTIVE='Y'
-AND SOURCE_VIEW != 'XXMPM_CRM_UPDATE_WORKREQ_V';
-
-COMMIT;
-```
-
----
-
-## PACKAGE CHANGES STILL NEEDED
-
-### File: docs/PACKAGE_CHANGES_SNIPPET.sql
-Three snippets to add to RUN_OUTBOUND_JOB in your SIT package.
-
-### CHANGE 1 — Variable Declaration
+### CHANGE 1 — In RUN_OUTBOUND_JOB DECLARE section
 Find: `v_status     VARCHAR2(20);`
 Add after:
 ```sql
-v_skipped    NUMBER := 0;  -- records skipped due to parent dependency
+v_skipped    NUMBER := 0;
 ```
 
-### CHANGE 2 — Dependency Check Block
+### CHANGE 2 — In RUN_OUTBOUND_JOB fetch loop
 Find: `v_processed := v_processed + 1;`
-Add ENTIRE block after it (before BEGIN SEND_TO_APIC):
+Add entire block after (before existing BEGIN SEND_TO_APIC):
 ```sql
 IF reg.DEPENDS_ON_REGISTRY_ID IS NOT NULL
 AND reg.PARENT_LINK_COL IS NOT NULL THEN
@@ -136,9 +265,9 @@ AND reg.PARENT_LINK_COL IS NOT NULL THEN
         v_parent_count NUMBER := 0;
     BEGIN
         EXECUTE IMMEDIATE
-            'SELECT ' || reg.PARENT_LINK_COL ||
-            ' FROM '  || reg.SOURCE_VIEW ||
-            ' WHERE ' || reg.SOURCE_KEY_COL || ' = :k'
+            'SELECT '||reg.PARENT_LINK_COL||
+            ' FROM ' ||reg.SOURCE_VIEW||
+            ' WHERE '||reg.SOURCE_KEY_COL||' = :k'
             INTO v_parent_key USING v_key_val;
         SELECT COUNT(*) INTO v_parent_count
         FROM   CRM_MPM_CRM_INTEGRATION_LOG
@@ -146,9 +275,9 @@ AND reg.PARENT_LINK_COL IS NOT NULL THEN
         AND    SOURCE_RECORD_ID = v_parent_key
         AND    FINAL_STATUS     = 'SUCCESS';
         IF v_parent_count = 0 THEN
-            v_skipped := NVL(v_skipped,0) + 1;
+            v_skipped := NVL(v_skipped,0)+1;
             BEGIN
-                INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG(
                     REGISTRY_ID,ENTITY_NAME,OPERATION_TYPE,
                     SOURCE_RECORD_ID,FINAL_STATUS,
                     ERROR_MESSAGE,CREATED_DATE,UPDATED_DATE)
@@ -159,7 +288,7 @@ AND reg.PARENT_LINK_COL IS NOT NULL THEN
                        ||reg.DEPENDS_ON_REGISTRY_ID
                        ||' Key='||v_parent_key||' SUCCESS',
                        SYSTIMESTAMP,SYSTIMESTAMP
-                FROM DUAL WHERE NOT EXISTS (
+                FROM DUAL WHERE NOT EXISTS(
                     SELECT 1 FROM CRM_MPM_CRM_INTEGRATION_LOG
                     WHERE REGISTRY_ID=reg.REGISTRY_ID
                     AND SOURCE_RECORD_ID=v_key_val
@@ -170,14 +299,14 @@ AND reg.PARENT_LINK_COL IS NOT NULL THEN
         END IF;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            v_skipped := NVL(v_skipped,0) + 1;
+            v_skipped:=NVL(v_skipped,0)+1;
             GOTO next_record;
         WHEN OTHERS THEN NULL;
     END;
 END IF;
 ```
 
-### CHANGE 3 — GOTO Label
+### CHANGE 3 — End of fetch loop
 Find:
 ```sql
             EXCEPTION
@@ -186,7 +315,7 @@ Find:
             END;
         END LOOP;
 ```
-Change to:
+Add `<<next_record>> NULL;` before END LOOP:
 ```sql
             EXCEPTION
                 WHEN OTHERS THEN
@@ -199,21 +328,23 @@ Change to:
 
 ---
 
-## ERROR CODES TO ADD (PENDING)
+## ERROR CODES TO INSERT
 ```sql
 INSERT INTO CRM_MPM_ERROR_CODE_MASTER
     (ERROR_CODE,ERROR_CATEGORY,ERROR_DESCRIPTION,IS_RETRYABLE)
 SELECT 'PARENT_PENDING','DEPENDENCY',
        'Child record waiting for parent SUCCESS before sending','N'
-FROM DUAL WHERE NOT EXISTS (
-    SELECT 1 FROM CRM_MPM_ERROR_CODE_MASTER WHERE ERROR_CODE='PARENT_PENDING');
+FROM DUAL WHERE NOT EXISTS(
+    SELECT 1 FROM CRM_MPM_ERROR_CODE_MASTER
+    WHERE ERROR_CODE='PARENT_PENDING');
 
 INSERT INTO CRM_MPM_ERROR_CODE_MASTER
     (ERROR_CODE,ERROR_CATEGORY,ERROR_DESCRIPTION,IS_RETRYABLE)
 SELECT 'PARENT_FAILED','DEPENDENCY',
        'Parent record failed — child on hold until parent fixed','N'
-FROM DUAL WHERE NOT EXISTS (
-    SELECT 1 FROM CRM_MPM_ERROR_CODE_MASTER WHERE ERROR_CODE='PARENT_FAILED');
+FROM DUAL WHERE NOT EXISTS(
+    SELECT 1 FROM CRM_MPM_ERROR_CODE_MASTER
+    WHERE ERROR_CODE='PARENT_FAILED');
 
 COMMIT;
 ```
@@ -222,7 +353,7 @@ COMMIT;
 
 ## SCHEDULER SETTINGS
 ```sql
--- Change outbound job to 15 min interval
+-- Change outbound to 15 min
 BEGIN
     DBMS_SCHEDULER.DISABLE('CRM_MPM_OUTBOUND_JOB');
     DBMS_SCHEDULER.SET_ATTRIBUTE(
@@ -233,51 +364,48 @@ BEGIN
 END;
 /
 -- TIMEOUT_MINUTES = 60 (vendor confirmed)
--- RETRY_INTERVAL_MINUTES = 10 (OK — retry only picks FAILED not TIMEOUT)
--- Timeout job: keep enabled
+-- RETRY_INTERVAL_MINUTES = 10 (fine — retry only FAILED not TIMEOUT)
+-- Keep timeout job enabled
 ```
 
 ---
 
-## WEB ADMIN TOOL
-**Repo:** crm-admin-web/
-**Tech:** Spring Boot 3.2 + Java 17 + Oracle JDBC
-**Login:** crmadmin / (bcrypt hash in CRM_MPM_APP_USERS)
-**Users DDL:** sql/schema/CRM_MPM_APP_USERS_DDL.sql
-**Compile:** mvn clean package -DskipTests
-**Run:** java -jar target/crm-admin-web-1.0.0.jar
-**URL:** http://localhost:8080
-
-### Known Issues to Fix
-1. SQL queries hardcoded in CrmAdminService.java — move to queries.properties
-2. Error log viewer tab missing
-3. Chain status view missing (Property→Building→Floor→Unit per property)
-4. PARENT_PENDING not shown in Monitor tab yet
-
----
-
-## OPEN ISSUES
-| # | Issue | Owner | Status |
-|---|-------|-------|--------|
-| 1 | ESB callback pointing to DEV not SIT | ESB Team | Pending |
-| 2 | Package 3 snippets not yet added to SIT | Tajudeen | Pending |
-| 3 | Error codes PARENT_PENDING/PARENT_FAILED insert | Tajudeen | Pending |
-| 4 | Outbound job change to 15 min | Tajudeen | Pending |
-| 5 | Web app SQL to properties file | Claude | Pending |
-| 6 | Web app error log tab | Claude | Pending |
-
----
-
-## KEY FILES IN GITHUB
+## KEY GITHUB FILES
 | File | Purpose |
 |------|---------|
 | sql/schema/PKG_CRM_INTEGRATION_BODY_FINAL.sql | Full package body |
 | sql/schema/PKG_CRM_INTEGRATION_SPEC_V2.sql | Package spec |
-| docs/PACKAGE_CHANGES_SNIPPET.sql | ONLY the 3 changes needed |
-| sql/SIT_SEQUENTIAL_DEPENDENCY_DEPLOY.sql | DDL + UPDATE for dependency |
+| docs/PACKAGE_CHANGES_SNIPPET.sql | ONLY 3 changes for SIT package |
+| sql/SIT_SEQUENTIAL_DEPENDENCY_DEPLOY.sql | DDL+UPDATE for dependency |
 | sql/SIT_EXTRA_FILTER_DEPLOY.sql | Extra filter UPDATE services |
+| sql/SIT_DDL.sql | SIT DDL deployment |
+| sql/SIT_DATA.sql | SIT config data |
+| sql/SIT_ENCRYPT_SECRET.sql | Re-encrypt secrets on SIT |
+| sql/diagnostics/SIT_SUPPORT_QUERIES.sql | 15 support queries |
 | sql/diagnostics/SIT_CALLBACK_DEBUG.sql | Callback diagnostics |
-| sql/diagnostics/SIT_CALLBACK_MATCHING_DEBUG.sql | Callback matching debug |
+| sql/diagnostics/SIT_CALLBACK_MATCHING_DEBUG.sql | Callback match debug |
 | sql/diagnostics/SIT_BUILD_CREATE_DEBUG.sql | Building CREATE debug |
-| sql/diagnostics/SIT_SUPPORT_QUERIES.sql | General support queries |
+| sql/diagnostics/EMERGENCY_STOP_RUNAWAY_RETRY.sql | Emergency stop |
+| admin-tool/CrmAdminTool.java | Java Swing admin tool |
+| admin-tool/crm-admin.properties | ALL SQL queries for standalone |
 | crm-admin-web/ | Spring Boot web admin tool |
+| crm-admin-web/src/main/resources/application.properties | DB config |
+| docs/SESSION_HANDOVER.md | This file |
+| docs/PACKAGE_CHANGES_SNIPPET.sql | Package change snippets |
+| docs/PKG_BODY_HIGHLIGHTED.html | Color-coded package viewer |
+
+---
+
+## COMMON ISSUES AND FIXES
+
+| Issue | Fix |
+|-------|-----|
+| ORA-29273 URL health check | Media service URLs use direct Java HTTP not Oracle UTL_HTTP |
+| ORA-06502 buffer overflow | Use DBMS_OUTPUT not EXECUTE IMMEDIATE for large DDL |
+| ORA-17004 NULL TIMESTAMP bind | Use dynamic SQL builder not ? IS NULL pattern |
+| HTTP 400 from APIC | Check APIC_ENDPOINT_URL has no ?api-version= suffix |
+| No matching log entry callback | ESB pointing to wrong env (DEV vs SIT) |
+| Runaway retry loop | Package fix applied — RETRY_IN_PROGRESS before send |
+| Bad credentials login | Use bcrypt-generator.com to generate hash |
+| DisabledException compile error | Add import org.springframework.security.authentication.DisabledException |
+| Duplicate bean passwordEncoder | Add spring.main.allow-bean-definition-overriding=true |
