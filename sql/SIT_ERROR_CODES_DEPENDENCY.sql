@@ -18,6 +18,13 @@
 
 SET DEFINE OFF
 
+-- ------------------------------------------------------------
+-- NOTE (09-Oct-2026): SIT had a CHECK constraint on ERROR_CATEGORY
+-- (not in repo DDL — added directly on the DB) that did not allow
+-- 'DEPENDENCY', so the MERGE below failed. Tajudeen dropped it on SIT.
+-- Re-adding it WITH 'DEPENDENCY' is in the optional block at the end.
+-- ------------------------------------------------------------
+
 -- Pre-check: SIT uses ERROR_DESCRIPTION (as the web app does).
 -- If this returns DESCRIPTION instead, rename the column below.
 SELECT COLUMN_NAME FROM USER_TAB_COLUMNS
@@ -48,3 +55,16 @@ COMMIT;
 SELECT ERROR_CODE, ERROR_CATEGORY, IS_RETRYABLE, ERROR_DESCRIPTION
 FROM   CRM_MPM_ERROR_CODE_MASTER
 WHERE  ERROR_CODE IN ('PARENT_PENDING','PARENT_FAILED');
+
+
+-- ============================================================
+-- OPTIONAL — re-add the ERROR_CATEGORY check, now incl. DEPENDENCY
+-- Keeps category values clean (UI / triage group by them).
+-- 1. See what categories exist today:
+SELECT ERROR_CATEGORY, COUNT(*) FROM CRM_MPM_ERROR_CODE_MASTER
+GROUP  BY ERROR_CATEGORY ORDER BY 1;
+-- 2. Make sure every value above is in the list, then:
+-- ALTER TABLE CRM_MPM_ERROR_CODE_MASTER
+--   ADD CONSTRAINT CHK_CRM_ERR_CATEGORY
+--   CHECK (ERROR_CATEGORY IN ('SUCCESS','BUSINESS_ERROR','SYSTEM_ERROR','DEPENDENCY'));
+-- ============================================================

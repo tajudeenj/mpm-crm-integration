@@ -457,5 +457,6 @@ END;
 | Bad credentials login | Use bcrypt-generator.com to generate hash |
 | DisabledException compile error | Add import org.springframework.security.authentication.DisabledException |
 | Duplicate bean passwordEncoder | Add spring.main.allow-bean-definition-overriding=true |
+| ORA-02290 on error code MERGE (SIT) | SIT had a CHECK on ERROR_CATEGORY (not in repo DDL) without 'DEPENDENCY'. Dropped on SIT 09-Oct-2026. Optional re-add incl. DEPENDENCY at end of sql/SIT_ERROR_CODES_DEPENDENCY.sql |
 | Child stuck PARENT_PENDING | Deploy SIT_PARENT_RELEASE_DEPLOY.sql; check parent in Chain Status |
 | "Missing query key" in status bar | Key absent in queries.properties / override file |
