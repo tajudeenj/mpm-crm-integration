@@ -925,18 +925,59 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
                         AND    FINAL_STATUS     = 'SUCCESS';
 
                         IF v_parent_count = 0 THEN
-                            -- Parent not SUCCESS yet — skip this record
+                            -- *** CHANGE: INSERT PARENT_PENDING instead of silent skip ***
+                            -- Admin Tool and Monitor tab will show this record as waiting
                             v_skipped := NVL(v_skipped, 0) + 1;
+                            BEGIN
+                                INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                                    REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+                                    SOURCE_RECORD_ID, FINAL_STATUS,
+                                    ERROR_MESSAGE, CREATED_DATE, UPDATED_DATE)
+                                SELECT reg.REGISTRY_ID, reg.ENTITY_NAME,
+                                       reg.OPERATION_TYPE, v_key_val,
+                                       'PARENT_PENDING',
+                                       'Waiting for parent Registry='
+                                       || reg.DEPENDS_ON_REGISTRY_ID
+                                       || ' Key=' || v_parent_key
+                                       || ' to reach SUCCESS status',
+                                       SYSTIMESTAMP, SYSTIMESTAMP
+                                FROM   DUAL
+                                WHERE  NOT EXISTS (
+                                    -- Avoid duplicate PARENT_PENDING rows
+                                    SELECT 1 FROM CRM_MPM_CRM_INTEGRATION_LOG
+                                    WHERE  REGISTRY_ID      = reg.REGISTRY_ID
+                                    AND    SOURCE_RECORD_ID = v_key_val
+                                    AND    FINAL_STATUS     = 'PARENT_PENDING');
+                            EXCEPTION WHEN OTHERS THEN NULL;
+                            END;
                             GOTO next_record;
                         END IF;
 
                     EXCEPTION
                         WHEN NO_DATA_FOUND THEN
-                            -- Cannot find parent key — skip
+                            -- Parent key not found in source view
                             v_skipped := NVL(v_skipped, 0) + 1;
+                            BEGIN
+                                INSERT INTO CRM_MPM_CRM_INTEGRATION_LOG (
+                                    REGISTRY_ID, ENTITY_NAME, OPERATION_TYPE,
+                                    SOURCE_RECORD_ID, FINAL_STATUS,
+                                    ERROR_MESSAGE, CREATED_DATE, UPDATED_DATE)
+                                SELECT reg.REGISTRY_ID, reg.ENTITY_NAME,
+                                       reg.OPERATION_TYPE, v_key_val,
+                                       'PARENT_PENDING',
+                                       'Parent key column ' || reg.PARENT_LINK_COL
+                                       || ' not found in view for key=' || v_key_val,
+                                       SYSTIMESTAMP, SYSTIMESTAMP
+                                FROM   DUAL
+                                WHERE  NOT EXISTS (
+                                    SELECT 1 FROM CRM_MPM_CRM_INTEGRATION_LOG
+                                    WHERE  REGISTRY_ID      = reg.REGISTRY_ID
+                                    AND    SOURCE_RECORD_ID = v_key_val
+                                    AND    FINAL_STATUS     = 'PARENT_PENDING');
+                            EXCEPTION WHEN OTHERS THEN NULL;
+                            END;
                             GOTO next_record;
                         WHEN OTHERS THEN
-                            -- Log error but continue
                             NULL;
                     END;
                 END IF;
