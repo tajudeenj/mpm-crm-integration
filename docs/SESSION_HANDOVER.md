@@ -276,6 +276,11 @@ D2. Pre-existing parents (in CRM before go-live, no log row): children
 8. ✅ Chain Status tab
 9. ✅ PARENT_PENDING in Monitor (sub-tab, KPI, dashboard columns)
    + found & fixed watermark gap (RELEASE_PARENT_PENDING)
+   + MANUAL RETRY BUG: button set FINAL_STATUS='FAILED' but left ERROR_CODE
+     (VALIDATION_FAILED/EXHAUSTED/... all IS_RETRYABLE='N'), and RUN_RETRY_JOB
+     only retries retryable codes -> manual retries were never resent.
+     Fix: manual retry now sets ERROR_CODE='MANUAL_RETRY' (new code, 'Y'),
+     NEXT_RETRY_DATE=NULL — web app AND Swing tool.
    + fixed Monitor table headers (All Records / Action / Retry had fewer
      headers than columns returned)
 

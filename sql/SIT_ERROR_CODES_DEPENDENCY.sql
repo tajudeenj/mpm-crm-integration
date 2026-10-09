@@ -40,6 +40,12 @@ USING (
     SELECT 'PARENT_FAILED', 'DEPENDENCY',
            'Parent record failed - child on hold until parent fixed and retried',
            'N' FROM DUAL
+    UNION ALL
+    -- Session 9: Manual Retry button sets this code so RUN_RETRY_JOB picks
+    -- the row (it only retries codes with IS_RETRYABLE='Y')
+    SELECT 'MANUAL_RETRY', 'RETRYABLE',
+           'Manually queued for retry from admin tool after data/config fix',
+           'Y' FROM DUAL
 ) s
 ON (e.ERROR_CODE = s.ERROR_CODE)
 WHEN MATCHED THEN UPDATE SET
@@ -51,10 +57,10 @@ VALUES (s.ERROR_CODE, s.ERROR_CATEGORY, s.ERROR_DESCRIPTION, s.IS_RETRYABLE);
 
 COMMIT;
 
--- Verify: expect 2 rows, both IS_RETRYABLE = 'N'
+-- Verify: expect 3 rows — PARENT_* = 'N', MANUAL_RETRY = 'Y'
 SELECT ERROR_CODE, ERROR_CATEGORY, IS_RETRYABLE, ERROR_DESCRIPTION
 FROM   CRM_MPM_ERROR_CODE_MASTER
-WHERE  ERROR_CODE IN ('PARENT_PENDING','PARENT_FAILED');
+WHERE  ERROR_CODE IN ('PARENT_PENDING','PARENT_FAILED','MANUAL_RETRY');
 
 
 -- ============================================================
@@ -66,5 +72,7 @@ GROUP  BY ERROR_CATEGORY ORDER BY 1;
 -- 2. Make sure every value above is in the list, then:
 -- ALTER TABLE CRM_MPM_ERROR_CODE_MASTER
 --   ADD CONSTRAINT CHK_CRM_ERR_CATEGORY
---   CHECK (ERROR_CATEGORY IN ('SUCCESS','BUSINESS_ERROR','SYSTEM_ERROR','DEPENDENCY'));
+--   CHECK (ERROR_CATEGORY IN ('OK','CRM','APIC','NETWORK','SYSTEM',
+--                             'RETRYABLE','CALLBACK','DEPENDENCY'));
+-- (actual SIT categories, confirmed 09-Oct-2026)
 -- ============================================================
