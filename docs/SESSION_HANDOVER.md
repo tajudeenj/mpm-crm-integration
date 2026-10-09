@@ -1,9 +1,9 @@
 # MPM CRM Integration — Complete Project Handover
-**Last Updated:** 09-Oct-2026
+**Last Updated:** 09-Oct-2026 (Session 9)
 **Project:** ADIB MPM Properties CRM/xRM Integration
 **GitHub:** https://github.com/tajudeenj/mpm-crm-integration
 **Developer:** Tajudeen Jalaudin, Senior Solution Architect, ADIB
-**Sessions:** 8 sessions from Jul-2026 to Oct-2026
+**Sessions:** 9 sessions from Jul-2026 to Oct-2026
 
 ---
 
@@ -130,6 +130,15 @@ RUN_TIMEOUT_JOB
 5. LENGTHB instead of LENGTH for Content-Length header
 6. SOURCE_EXTRA_FILTER — appended to outbound WHERE clause
 7. Sequential dependency check — PARENT_PENDING status (Oct 2026)
+8. PARENT_PENDING release pass — RELEASE_PARENT_PENDING (Session 9, 09-Oct-2026)
+   BUG FOUND: changes 1-3 skip the child via GOTO, but the end-of-loop
+   watermark update moves to MAX(filter col) of the whole view, so a skipped
+   child is NEVER re-read. Since callbacks are async (up to 60 min), the parent
+   is almost never SUCCESS in the same run -> chain would stall at Building.
+   FIX: sql/SIT_PARENT_RELEASE_DEPLOY.sql (changes 4-6) — release pass at the
+   start of each RUN_OUTBOUND_JOB reads PARENT_PENDING rows from the LOG and
+   sends them once parent is SUCCESS. Pending row -> RELEASED (+ new SENT row).
+   Parent terminal failure -> child PARENT_FAILED; parent retried -> back to PENDING.
 
 ---
 
@@ -209,8 +218,18 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 - URL: http://server:8080
 - Login: CRM_MPM_APP_USERS table (BCrypt)
 - DB config: application.properties (update before run)
-- KNOWN ISSUE: SQL queries hardcoded in CrmAdminService.java
-  (should be in properties file like standalone — not done yet)
+- SQL: ALL queries in src/main/resources/queries.properties (Session 9)
+  loaded by config/QueryStore.java. Override without recompile:
+  drop ./queries.properties next to the JAR (only changed keys needed)
+  or -Dcrm.queries.file=/path. Bind with ? ; *.filter.* keys appended
+  only when a filter is set (ORA-17004 safe).
+  Covers CrmAdminService, TestPushService, UserService.
+  ScriptService (DDL/insert generator) still builds SQL in Java.
+- New in Session 9: Error Log tab (integration errors + full payload
+  detail + job-run errors), Chain Status tab (per-property tree),
+  Monitor > Parent Pending sub-tab + dashboard KPI/columns.
+- Chain Status resolves registry IDs by SOURCE_VIEW (env-independent).
+  RELEASED rows are excluded from all counts (no double counting).
 
 ---
 
@@ -228,18 +247,40 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 
 #### Tajudeen (DBA/Package)
 1. Add 3 snippets to SIT package (file: docs/PACKAGE_CHANGES_SNIPPET.sql)
+1b. Add changes 4-6 (file: sql/SIT_PARENT_RELEASE_DEPLOY.sql) — REQUIRED,
+    without it children stay PARENT_PENDING forever
 2. Insert PARENT_PENDING and PARENT_FAILED error codes (see below)
 3. Change outbound job to 15 min interval
 4. Test one full Property→Building→Floor→Unit chain on SIT
+   (watch it in web app: Chain Status tab; expect ~4 x (callback + 15 min))
+5. Rebuild web app: mvn clean package -DskipTests (new queries.properties)
+
+#### Decisions needed (Session 9)
+D1. Parent DUPLICATE_RECORD: child check requires parent SUCCESS only.
+    If CRM returns DUPLICATE_RECORD for a property that already exists,
+    its buildings wait forever. Accept DUPLICATE_RECORD as "parent OK"?
+    (change both CHANGE 2 and RELEASE_PARENT_PENDING if yes)
+D2. Pre-existing parents (in CRM before go-live, no log row): children
+    will wait. Options: seed SUCCESS log rows for migrated masters, or
+    reset parent watermark to re-push.
 
 #### ESB Team
 5. Point SIT callback URL to SIT endpoint (currently pointing to DEV)
 
+#### Claude — DONE Session 9 (09-Oct-2026)
+6. ✅ SQL moved to queries.properties (+ QueryStore, external override)
+7. ✅ Error Log tab
+8. ✅ Chain Status tab
+9. ✅ PARENT_PENDING in Monitor (sub-tab, KPI, dashboard columns)
+   + found & fixed watermark gap (RELEASE_PARENT_PENDING)
+   + fixed Monitor table headers (All Records / Action / Retry had fewer
+     headers than columns returned)
+
 #### Claude (Next Session)
-6. Move SQL queries from CrmAdminService.java to queries.properties
-7. Add Error Log viewer tab to web app
-8. Add Chain Status view (Property→Building→Floor→Unit per property)
-9. PARENT_PENDING display in Monitor tab
+10. Port same features to Java Swing tool (Error Log, Chain, Parent Pending)
+11. Move ScriptService SQL to queries.properties
+12. Registry tab: show/edit DEPENDS_ON_REGISTRY_ID + PARENT_LINK_COL
+13. Apply D1/D2 decisions once Tajudeen confirms
 
 ---
 
@@ -376,6 +417,9 @@ END;
 | sql/schema/PKG_CRM_INTEGRATION_BODY_FINAL.sql | Full package body |
 | sql/schema/PKG_CRM_INTEGRATION_SPEC_V2.sql | Package spec |
 | docs/PACKAGE_CHANGES_SNIPPET.sql | ONLY 3 changes for SIT package |
+| sql/SIT_PARENT_RELEASE_DEPLOY.sql | Changes 4-6: PARENT_PENDING release pass |
+| crm-admin-web/src/main/resources/queries.properties | ALL web app SQL |
+| crm-admin-web/src/main/java/com/adib/crm/admin/config/QueryStore.java | Loads queries |
 | sql/SIT_SEQUENTIAL_DEPENDENCY_DEPLOY.sql | DDL+UPDATE for dependency |
 | sql/SIT_EXTRA_FILTER_DEPLOY.sql | Extra filter UPDATE services |
 | sql/SIT_DDL.sql | SIT DDL deployment |
@@ -409,3 +453,5 @@ END;
 | Bad credentials login | Use bcrypt-generator.com to generate hash |
 | DisabledException compile error | Add import org.springframework.security.authentication.DisabledException |
 | Duplicate bean passwordEncoder | Add spring.main.allow-bean-definition-overriding=true |
+| Child stuck PARENT_PENDING | Deploy SIT_PARENT_RELEASE_DEPLOY.sql; check parent in Chain Status |
+| "Missing query key" in status bar | Key absent in queries.properties / override file |

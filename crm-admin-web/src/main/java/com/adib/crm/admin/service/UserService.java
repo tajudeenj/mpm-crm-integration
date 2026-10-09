@@ -1,5 +1,6 @@
 package com.adib.crm.admin.service;
 
+import com.adib.crm.admin.config.QueryStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.DisabledException;
@@ -18,13 +19,15 @@ public class UserService implements UserDetailsService {
     @Autowired
     private PasswordEncoder encoder;
 
+    @Autowired
+    private QueryStore q;
+
     // ── Spring Security — loads user for login ────────────────────────────────
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         try {
             return jdbc.queryForObject(
-                "SELECT USERNAME, PASSWORD_HASH, ROLE, IS_ACTIVE " +
-                "FROM CRM_MPM_APP_USERS WHERE USERNAME = ?",
+                q.get("query.user.login"),
                 (rs, i) -> {
                     String uname    = rs.getString("USERNAME");
                     String pwdHash  = rs.getString("PASSWORD_HASH");
@@ -50,11 +53,7 @@ public class UserService implements UserDetailsService {
     public Map<String, Object> getUser(String username) {
         try {
             return jdbc.queryForMap(
-                "SELECT USERNAME, FULL_NAME, ROLE, IS_ACTIVE, " +
-                "NVL(ALLOWED_SERVICES,'All') AS ALLOWED_SERVICES, " +
-                "TO_CHAR(LAST_LOGIN,'DD-MON-YY HH24:MI') AS LAST_LOGIN, " +
-                "TO_CHAR(CREATED_DATE,'DD-MON-YY') AS CREATED_DATE " +
-                "FROM CRM_MPM_APP_USERS WHERE USERNAME = ?",
+                q.get("query.user.get"),
                 username.toLowerCase());
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -67,12 +66,7 @@ public class UserService implements UserDetailsService {
     // ── List all users ────────────────────────────────────────────────────────
     public List<Map<String, Object>> listUsers() {
         return jdbc.queryForList(
-            "SELECT USERNAME, NVL(FULL_NAME,'') AS FULL_NAME, ROLE, IS_ACTIVE, " +
-            "NVL(ALLOWED_SERVICES,'All') AS ALLOWED_SERVICES, " +
-            "TO_CHAR(LAST_LOGIN,'DD-MON-YY HH24:MI') AS LAST_LOGIN, " +
-            "TO_CHAR(CREATED_DATE,'DD-MON-YY') AS CREATED_DATE " +
-            "FROM CRM_MPM_APP_USERS " +
-            "ORDER BY ROLE, USERNAME");
+            q.get("query.user.list"));
     }
 
     // ── Save (create or update) user ──────────────────────────────────────────
@@ -87,20 +81,18 @@ public class UserService implements UserDetailsService {
 
         // Check if user exists
         Integer count = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM CRM_MPM_APP_USERS WHERE USERNAME=?",
+            q.get("query.user.exists"),
             Integer.class, username);
 
         if (count != null && count > 0) {
             // Update existing — only update password if provided
             if (!password.isEmpty()) {
                 jdbc.update(
-                    "UPDATE CRM_MPM_APP_USERS SET FULL_NAME=?, ROLE=?, IS_ACTIVE=?, " +
-                    "ALLOWED_SERVICES=?, PASSWORD_HASH=?, UPDATED_DATE=SYSDATE WHERE USERNAME=?",
+                    q.get("query.user.update.withpwd"),
                     fullName, role, isActive, svcVal, encoder.encode(password), username);
             } else {
                 jdbc.update(
-                    "UPDATE CRM_MPM_APP_USERS SET FULL_NAME=?, ROLE=?, IS_ACTIVE=?, " +
-                    "ALLOWED_SERVICES=?, UPDATED_DATE=SYSDATE WHERE USERNAME=?",
+                    q.get("query.user.update.nopwd"),
                     fullName, role, isActive, svcVal, username);
             }
         } else {
@@ -109,9 +101,7 @@ public class UserService implements UserDetailsService {
                 throw new RuntimeException("Password is required for new user");
             }
             jdbc.update(
-                "INSERT INTO CRM_MPM_APP_USERS " +
-                "(USERNAME, FULL_NAME, PASSWORD_HASH, ROLE, IS_ACTIVE, ALLOWED_SERVICES, CREATED_DATE, UPDATED_DATE) " +
-                "VALUES (?, ?, ?, ?, ?, ?, SYSDATE, SYSDATE)",
+                q.get("query.user.insert"),
                 username, fullName, encoder.encode(password), role, isActive, svcVal);
         }
     }
@@ -119,7 +109,7 @@ public class UserService implements UserDetailsService {
     // ── Toggle active / inactive ──────────────────────────────────────────────
     public void toggleUser(String username, String isActive) {
         jdbc.update(
-            "UPDATE CRM_MPM_APP_USERS SET IS_ACTIVE=?, UPDATED_DATE=SYSDATE WHERE USERNAME=?",
+            q.get("query.user.toggle"),
             isActive, username.toLowerCase());
     }
 
@@ -129,7 +119,7 @@ public class UserService implements UserDetailsService {
             throw new RuntimeException("New password cannot be empty");
         }
         jdbc.update(
-            "UPDATE CRM_MPM_APP_USERS SET PASSWORD_HASH=?, UPDATED_DATE=SYSDATE WHERE USERNAME=?",
+            q.get("query.user.resetpwd"),
             encoder.encode(newPassword.trim()), username.toLowerCase());
     }
 
@@ -137,7 +127,7 @@ public class UserService implements UserDetailsService {
     public void updateLastLogin(String username) {
         try {
             jdbc.update(
-                "UPDATE CRM_MPM_APP_USERS SET LAST_LOGIN=SYSDATE WHERE USERNAME=?",
+                q.get("query.user.lastlogin"),
                 username.toLowerCase());
         } catch (Exception ignored) {}
     }

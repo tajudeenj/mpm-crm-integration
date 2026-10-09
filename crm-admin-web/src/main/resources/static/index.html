@@ -134,6 +134,15 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
 ::-webkit-scrollbar-track{background:#0d1624}
 ::-webkit-scrollbar-thumb{background:#1e3050;border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:#2a4060}
+/* DETAIL / JSON */
+.kv-grid{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:5px 10px;font-size:12px;margin-bottom:10px}
+.kv-grid .k{color:#5a7090;text-align:right;font-weight:600}
+.kv-grid .v{color:#d0d8e4;font-family:'Courier New',monospace;font-size:11px;word-break:break-all}
+.json-box{background:#0a1020;color:#a8d8a8;font-family:'Courier New',monospace;font-size:11px;border:1px solid #1e3050;border-radius:6px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
+.json-title{color:#4a9eff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin:10px 0 4px}
+.chain-lvl{display:inline-block;min-width:78px;font-weight:700;font-size:11px}
+.chain-indent-2{padding-left:18px}.chain-indent-3{padding-left:36px}.chain-indent-4{padding-left:54px}
+td.wrap{white-space:normal;max-width:360px;font-size:11px}
 /* CODE AREA */
 .code-area{width:100%;background:#0a1020;color:#a8d8a8;font-family:'Courier New',monospace;font-size:12px;border:1px solid #1e3050;border-radius:6px;padding:12px;resize:vertical;line-height:1.5}
 </style>
@@ -156,6 +165,8 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
   <button class="tab-btn" onclick="showTab('watermark',this)">💧 Watermark</button>
   <button class="tab-btn" onclick="showTab('errorcodes',this)">⚠ Error Codes</button>
   <button class="tab-btn" onclick="showTab('monitor',this)">📊 Monitor</button>
+  <button class="tab-btn" onclick="showTab('errorlog',this)">🧾 Error Log</button>
+  <button class="tab-btn" onclick="showTab('chain',this)">🔗 Chain Status</button>
   <button class="tab-btn" onclick="showTab('scripts',this)">📄 Script Download</button>
   <button class="tab-btn" onclick="showTab('scheduler',this)">⏰ Scheduler</button>
   <button class="tab-btn" onclick="showTab('health',this)">🩺 Health Check</button>
@@ -491,6 +502,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
     <button class="sub-tab active" onclick="showSubTab('monitor','dashboard',this)">📊 Dashboard</button>
     <button class="sub-tab" onclick="showSubTab('monitor','allrecords',this)">📋 All Records</button>
     <button class="sub-tab" onclick="showSubTab('monitor','action',this)">⚠ Action Needed</button>
+    <button class="sub-tab" onclick="showSubTab('monitor','parent',this);monParentRefresh()">⏳ Parent Pending</button>
     <button class="sub-tab" onclick="showSubTab('monitor','retry',this)">🔄 Retry Queue</button>
     <button class="sub-tab" onclick="showSubTab('monitor','triage',this)">🔍 Error Triage</button>
     <button class="sub-tab" onclick="showSubTab('monitor','callback',this)">📥 Callback Audit</button>
@@ -507,7 +519,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
         </div>
       </div>
       <div class="tbl-wrap"><table id="dashTable">
-        <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>⚠ Action Needed</th><th>Last Sent</th></tr></thead>
+        <thead><tr><th>Service</th><th>Total</th><th>Success</th><th>Pending</th><th>Val Failed</th><th>Duplicate</th><th>Auto Retry</th><th>Exhausted</th><th>Parent Missing</th><th>⚠ Action Needed</th><th>Last Sent</th><th>⏳ Parent Pending</th><th>Parent Failed</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -525,7 +537,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
         <button class="btn-warning" onclick="monManualRetry('recTable')">🔄 Manual Retry Selected</button>
       </div>
       <div class="tbl-wrap" style="max-height:440px"><table id="recTable">
-        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Retry</th><th>Manual</th></tr></thead>
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Data Sent</th><th>Failed Fields</th><th>CRM Response</th><th>Error</th><th>CRM Ref</th><th>Sent Date</th><th>Callback Date</th><th>Retry</th><th>Manual</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -541,7 +553,21 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
         </div>
       </div>
       <div class="tbl-wrap" style="max-height:440px"><table id="actionTable">
-        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error / Validation</th><th>Sent Date</th><th>Retry</th><th>Recommended Action</th></tr></thead>
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Data Sent</th><th>Failed Fields</th><th>CRM Response</th><th>Error</th><th>Sent Date</th><th>Callback Date</th><th>Retry</th><th>Recommended Action</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div id="monitor-parent" class="sub-panel">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">⏳</span> Waiting on Parent (CREATE chain)</div>
+        <button class="btn-muted" onclick="monParentRefresh()">🔄 Refresh</button>
+      </div>
+      <div class="alert alert-info">Children are released automatically on the next outbound run once the parent reaches <b>SUCCESS</b>. <b>PARENT_FAILED</b> = parent is EXHAUSTED / VALIDATION_FAILED etc. — fix and retry the parent, the child follows.</div>
+      <div class="tbl-wrap" style="max-height:440px"><table id="parentTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Parent Service</th><th>Parent Key</th><th>Parent Status</th><th>Waiting Since</th><th>Wait (min)</th><th>Detail</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -554,7 +580,7 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
         <button class="btn-muted" onclick="monRetryRefresh()">🔄 Refresh</button>
       </div>
       <div class="tbl-wrap"><table id="retryTable">
-        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Error</th><th>Sent Date</th><th>Queued At</th><th>Progress</th></tr></thead>
+        <thead><tr><th>Log ID</th><th>Service</th><th>Record ID</th><th>Status</th><th>Data Sent</th><th>Error</th><th>Sent Date</th><th>Queued At</th><th>Progress</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -591,6 +617,83 @@ td.mono{font-family:'Courier New',monospace;font-size:11px}
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ TAB 7: SCRIPT DOWNLOAD -->
+<!-- ═══════════════ ERROR LOG ═══════════════ -->
+<div id="tab-errorlog" class="tab-panel">
+  <div class="sub-tabs">
+    <button class="sub-tab active" onclick="showSubTab('errorlog','records',this)">🧾 Integration Errors</button>
+    <button class="sub-tab" onclick="showSubTab('errorlog','jobs',this);elJobsRefresh()">⏰ Job Run Errors</button>
+  </div>
+
+  <div id="errorlog-records" class="sub-panel active">
+    <div class="card">
+      <div class="filter-row">
+        <label>Service:</label><select id="el-service" style="width:170px"><option value="">All</option></select>
+        <label>Status:</label><select id="el-status" style="width:150px"><option value="">All</option></select>
+        <label>Error Code:</label><select id="el-code" style="width:150px"><option value="">All</option></select>
+        <label>From:</label><input id="el-from" placeholder="01-OCT-26" style="width:95px">
+        <label>To:</label><input id="el-to" placeholder="31-OCT-26" style="width:95px">
+        <label>Record:</label><input id="el-recId" style="width:110px">
+        <label>Text:</label><input id="el-text" placeholder="in message" style="width:130px">
+        <button class="btn-primary" onclick="elRefresh()">🔍 Search</button>
+        <button class="btn-warning" onclick="elRetry()">🔄 Manual Retry</button>
+      </div>
+      <div class="tbl-wrap" style="max-height:300px"><table id="elTable">
+        <thead><tr><th>Log ID</th><th>Service</th><th>Entity</th><th>Op</th><th>Record ID</th><th>Status</th><th>Error Code</th><th>HTTP</th><th>ACK</th><th>Error Summary</th><th>Retry</th><th>Last Updated</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card" id="elDetailCard" style="display:none">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🔎</span> <span id="elDetailTitle">Detail</span></div>
+        <button class="btn-muted" onclick="elCopyDetail()">📋 Copy All</button>
+      </div>
+      <div id="elDetail"></div>
+    </div>
+  </div>
+
+  <div id="errorlog-jobs" class="sub-panel">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">⏰</span> Scheduler Runs with Errors (CRM_MPM_JOB_RUN_HISTORY)</div>
+        <button class="btn-muted" onclick="elJobsRefresh()">🔄 Refresh</button>
+      </div>
+      <div class="tbl-wrap" style="max-height:440px"><table id="elJobTable">
+        <thead><tr><th>Run ID</th><th>Job</th><th>Status</th><th>Started</th><th>Ended</th><th>Processed</th><th>Success</th><th>Failed</th><th>Error</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CHAIN STATUS ═══════════════ -->
+<div id="tab-chain" class="tab-panel">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">🔗</span> Property → Building → Floor → Unit (CREATE chain)</div>
+      <span id="chainKpi" style="font-size:11px;color:#5a7090"></span>
+    </div>
+    <div class="filter-row">
+      <label>Property:</label><input id="ch-prop" placeholder="e.g. MA00810" style="width:130px">
+      <label>State:</label><select id="ch-state" style="width:140px"><option value="">All</option><option>BROKEN</option><option>IN_PROGRESS</option><option>NOT_STARTED</option><option>COMPLETE</option></select>
+      <button class="btn-primary" onclick="chainRefresh()">🔍 Search</button>
+      <span style="font-size:11px;color:#5a7090">Click a property for its full tree. Counts are SUCCESS / total.</span>
+    </div>
+    <div class="tbl-wrap" style="max-height:300px"><table id="chainTable">
+      <thead><tr><th>Property</th><th>Property Status</th><th>Buildings</th><th>Floors</th><th>Units</th><th>⏳ Waiting</th><th>In Flight</th><th>Broken</th><th>Not Sent</th><th>Chain State</th><th>Last Activity</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+  <div class="card" id="chainDetailCard" style="display:none">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">🌳</span> <span id="chainDetailTitle"></span></div>
+    </div>
+    <div class="tbl-wrap" style="max-height:420px"><table id="chainDetailTable">
+      <thead><tr><th>Level / Key</th><th>Parent Key</th><th>Status</th><th>Log ID</th><th>CRM Entity ID</th><th>Last Update</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+</div>
+
 <div id="tab-scripts" class="tab-panel">
   <div class="card">
     <div class="card-header">
@@ -788,9 +891,9 @@ const API='/api';let selectedRows={};let currentUser=null;let allServices=[];let
 
 function setStatus(msg,type){const sb=document.getElementById('statusBar');sb.textContent=msg;sb.className=type||''}
 async function api(method,path,body){try{const opts={method,headers:{'Content-Type':'application/json'}};if(body)opts.body=JSON.stringify(body);const r=await fetch(API+path,opts);if(r.status===401){window.location.href='/login';return;}const j=await r.json();if(!j.success)throw new Error(j.error);return j.data}catch(e){setStatus('Error: '+e.message,'err');throw e}}
-function sBadge(s){const m={SUCCESS:'b-green',SENT:'b-blue',VALIDATION_FAILED:'b-orange',EXHAUSTED:'b-red',FAILED:'b-orange',DUPLICATE_RECORD:'b-grey',RECORD_NOT_FOUND:'b-orange',CRM_REJECTED:'b-red',TIMEOUT:'b-orange',RETRY_IN_PROGRESS:'b-blue',Y:'b-green',N:'b-red','TRUE':'b-green','FALSE':'b-red'};return`<span class="badge ${m[s]||'b-grey'}">${s||''}</span>`}
+function sBadge(s){const m={SUCCESS:'b-green',SENT:'b-blue',VALIDATION_FAILED:'b-orange',EXHAUSTED:'b-red',FAILED:'b-orange',DUPLICATE_RECORD:'b-grey',RECORD_NOT_FOUND:'b-orange',CRM_REJECTED:'b-red',TIMEOUT:'b-orange',RETRY_IN_PROGRESS:'b-blue',PENDING:'b-blue',PARENT_PENDING:'b-purple',PARENT_FAILED:'b-red',RELEASED:'b-grey',NOT_SENT:'b-grey',COMPLETE:'b-green',BROKEN:'b-red',IN_PROGRESS:'b-blue',NOT_STARTED:'b-grey',ERROR:'b-red',COMPLETED:'b-green',RUNNING:'b-blue',Y:'b-green',N:'b-red','TRUE':'b-green','FALSE':'b-red'};return`<span class="badge ${m[s]||'b-grey'}">${s||''}</span>`}
 function fillTable(tid,rows,dbl){const tb=document.querySelector('#'+tid+' tbody');tb.innerHTML='';(rows||[]).forEach((row,i)=>{const v=Array.isArray(row)?row:Object.values(row);const tr=document.createElement('tr');tr.innerHTML=v.map(x=>`<td>${x===null?'':String(x)}</td>`).join('');tr.onclick=()=>{document.querySelectorAll('#'+tid+' tr.selected').forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');selectedRows[tid]={index:i,data:v}};if(dbl)tr.ondblclick=()=>{tr.click();dbl()};tb.appendChild(tr)})}
-function showTab(name,btn){document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');if(btn)btn.classList.add('active');const L={credentials:credRefresh,registry:()=>{regRefresh();loadCredCodes()},mappings:()=>{mapLoadNames();mapRefresh()},watermark:wmRefresh,errorcodes:ecRefresh,monitor:()=>{monDashRefresh();loadServiceNames()},scripts:()=>{},scheduler:schRefresh,health:()=>{healthRefresh();loadSysStatus()},testpush:tpLoadServices,users:()=>{userRefresh();loadSvcChips()}};if(L[name])L[name]()}
+function showTab(name,btn){document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');if(btn)btn.classList.add('active');const L={credentials:credRefresh,registry:()=>{regRefresh();loadCredCodes()},mappings:()=>{mapLoadNames();mapRefresh()},watermark:wmRefresh,errorcodes:ecRefresh,monitor:()=>{monDashRefresh();loadServiceNames()},errorlog:()=>{elLoadFilters();elRefresh()},chain:chainRefresh,scripts:()=>{},scheduler:schRefresh,health:()=>{healthRefresh();loadSysStatus()},testpush:tpLoadServices,users:()=>{userRefresh();loadSvcChips()}};if(L[name])L[name]()}
 function showSubTab(group,name,btn){document.querySelectorAll(`#tab-${group} .sub-panel`).forEach(p=>p.classList.remove('active'));document.querySelectorAll(`#tab-${group} .sub-tab`).forEach(b=>b.classList.remove('active'));document.getElementById(group+'-'+name).classList.add('active');if(btn)btn.classList.add('active')}
 
 async function ping(){try{const d=await api('GET','/ping');document.getElementById('dbStatus').textContent='● DB Connected — '+d.dbTime;document.getElementById('dbStatus').className='ok'}catch(e){document.getElementById('dbStatus').textContent='● DB Error';document.getElementById('dbStatus').className='err'}}
@@ -846,13 +949,33 @@ async function ecSave(){const b={errorCode:document.getElementById('e-errorCode'
 
 // MONITOR
 async function loadServiceNames(){try{const n=await api('GET','/monitor/service-names');const s=await api('GET','/monitor/statuses');['f-service','cb-service'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">All Services</option>'+n.map(x=>`<option>${x}</option>`).join('')});const fs=document.getElementById('f-status');if(fs)fs.innerHTML='<option value="">All Statuses</option>'+s.map(x=>`<option>${x}</option>`).join('')}catch(e){}}
-async function monDashRefresh(){try{const rows=await api('GET','/monitor/dashboard');const t=rows.reduce((a,r)=>{const v=Object.values(r);a.total+=Number(v[1])||0;a.success+=Number(v[2])||0;a.action+=Number(v[9])||0;a.exhausted+=Number(v[7])||0;a.failed+=(Number(v[6])||0);return a},{total:0,success:0,action:0,exhausted:0,failed:0});document.getElementById('dashCards').innerHTML=`<div class="kpi-card"><div class="kpi-num">${t.total}</div><div class="kpi-lbl">Total Records</div></div><div class="kpi-card success"><div class="kpi-num">${t.success}</div><div class="kpi-lbl">Successful</div></div><div class="kpi-card ${t.failed>0?'warn':''}"><div class="kpi-num">${t.failed}</div><div class="kpi-lbl">Auto Retry</div></div><div class="kpi-card ${t.exhausted>0?'danger':''}"><div class="kpi-num">${t.exhausted}</div><div class="kpi-lbl">Exhausted</div></div><div class="kpi-card ${t.action>0?'danger':''}"><div class="kpi-num">${t.action}</div><div class="kpi-lbl">⚠ Action Needed</div></div>`;fillTable('dashTable',rows);const now=new Date().toLocaleTimeString();document.getElementById('dashLastRefresh').textContent='Last refresh: '+now;setStatus('Dashboard refreshed — '+now,'ok')}catch(e){}}
+async function monDashRefresh(){try{const rows=await api('GET','/monitor/dashboard');const t=rows.reduce((a,r)=>{const v=Object.values(r);a.total+=Number(v[1])||0;a.success+=Number(v[2])||0;a.action+=Number(v[9])||0;a.exhausted+=Number(v[7])||0;a.failed+=(Number(v[6])||0);a.parent+=(Number(v[11])||0);return a},{total:0,success:0,action:0,exhausted:0,failed:0,parent:0});document.getElementById('dashCards').innerHTML=`<div class="kpi-card"><div class="kpi-num">${t.total}</div><div class="kpi-lbl">Total Records</div></div><div class="kpi-card success"><div class="kpi-num">${t.success}</div><div class="kpi-lbl">Successful</div></div><div class="kpi-card ${t.failed>0?'warn':''}"><div class="kpi-num">${t.failed}</div><div class="kpi-lbl">Auto Retry</div></div><div class="kpi-card ${t.exhausted>0?'danger':''}"><div class="kpi-num">${t.exhausted}</div><div class="kpi-lbl">Exhausted</div></div><div class="kpi-card ${t.action>0?'danger':''}"><div class="kpi-num">${t.action}</div><div class="kpi-lbl">⚠ Action Needed</div></div><div class="kpi-card ${t.parent>0?'warn':''}" style="cursor:pointer" onclick="showSubTab('monitor','parent',document.querySelectorAll('#tab-monitor .sub-tab')[3]);monParentRefresh()"><div class="kpi-num">${t.parent}</div><div class="kpi-lbl">⏳ Parent Pending</div></div>`;fillTable('dashTable',rows);const now=new Date().toLocaleTimeString();document.getElementById('dashLastRefresh').textContent='Last refresh: '+now;setStatus('Dashboard refreshed — '+now,'ok')}catch(e){}}
 async function monRecordsRefresh(){const p=new URLSearchParams({serviceName:document.getElementById('f-service').value,status:document.getElementById('f-status').value,fromDate:document.getElementById('f-from').value,toDate:document.getElementById('f-to').value,recordId:document.getElementById('f-recId').value});try{const r=await api('GET','/monitor/records?'+p);fillTable('recTable',r);setStatus('Records: '+r.length,'ok')}catch(e){}}
 async function monManualRetry(tid){const sel=selectedRows[tid];if(!sel){setStatus('Select a record','warn');return}const logId=sel.data[0];if(!confirm('Queue LOG_ID='+logId+' for manual retry?\n\nStatus will be reset to FAILED and picked up on next retry job run.'))return;try{const msg=await api('POST','/monitor/records/'+logId+'/manual-retry');setStatus(msg,'ok')}catch(e){}}
 async function monActionRefresh(){try{const r=await api('GET','/monitor/action-needed');fillTable('actionTable',r);setStatus('Action needed: '+r.length,r.length>0?'warn':'ok')}catch(e){}}
 async function monRetryRefresh(){try{const r=await api('GET','/monitor/retry-queue');fillTable('retryTable',r);setStatus('Retry queue: '+r.length,'ok')}catch(e){}}
 async function monTriageRefresh(){try{const r=await api('GET','/monitor/error-triage');fillTable('triageTable',r);setStatus('Triage loaded','ok')}catch(e){}}
 async function monCallbackRefresh(){const p=new URLSearchParams({serviceName:document.getElementById('cb-service').value,statusCode:document.getElementById('cb-status').value,fromDate:document.getElementById('cb-from').value,toDate:document.getElementById('cb-to').value});try{const r=await api('GET','/monitor/callback-audit?'+p);fillTable('cbTable',r);setStatus('Callbacks: '+r.length,'ok')}catch(e){}}
+
+// ═══ PARENT PENDING / ERROR LOG / CHAIN STATUS ═══
+function esc(x){return x===null||x===undefined?'':String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function vals(r){return Array.isArray(r)?r:Object.values(r)}
+function selectRow(tid,tr,i,v){document.querySelectorAll('#'+tid+' tr.selected').forEach(x=>x.classList.remove('selected'));tr.classList.add('selected');selectedRows[tid]={index:i,data:v}}
+function renderRows(tid,rows,cellFn,onClick){const tb=document.querySelector('#'+tid+' tbody');tb.innerHTML='';(rows||[]).forEach((r,i)=>{const v=vals(r);const tr=document.createElement('tr');tr.innerHTML=cellFn(v);tr.onclick=()=>{selectRow(tid,tr,i,v);if(onClick)onClick(v)};tb.appendChild(tr)})}
+function pretty(x){if(x===null||x===undefined||x==='')return'(empty)';try{return JSON.stringify(JSON.parse(x),null,2)}catch(e){return String(x)}}
+
+async function monParentRefresh(){try{const r=await api('GET','/monitor/parent-pending');renderRows('parentTable',r,v=>`<td class="mono">${esc(v[0])}</td><td>${esc(v[1])}</td><td class="mono">${esc(v[2])}</td><td>${sBadge(v[3])}</td><td>${esc(v[4])}</td><td class="mono">${esc(v[5])}</td><td>${sBadge(v[6])}</td><td>${esc(v[7])}</td><td style="text-align:right">${esc(v[8])}</td><td class="wrap">${esc(v[9])}</td>`);const f=r.filter(x=>vals(x)[3]==='PARENT_FAILED').length;setStatus('Parent pending: '+(r.length-f)+' waiting, '+f+' parent failed',f>0?'warn':'ok')}catch(e){}}
+
+let elDetailText='';
+async function elLoadFilters(){try{const [n,s,c]=await Promise.all([api('GET','/monitor/service-names'),api('GET','/monitor/statuses'),api('GET','/errorlog/codes')]);const fill=(id,arr)=>{const el=document.getElementById(id);const cur=el.value;el.innerHTML='<option value="">All</option>'+arr.map(x=>`<option>${esc(x)}</option>`).join('');el.value=cur};fill('el-service',n);fill('el-status',s.filter(x=>!['SUCCESS','SENT','PENDING','RELEASED','PARENT_PENDING','RETRY_IN_PROGRESS'].includes(x)));fill('el-code',c)}catch(e){}}
+async function elRefresh(){const p=new URLSearchParams({serviceName:document.getElementById('el-service').value,status:document.getElementById('el-status').value,errorCode:document.getElementById('el-code').value,fromDate:document.getElementById('el-from').value.trim(),toDate:document.getElementById('el-to').value.trim(),recordId:document.getElementById('el-recId').value.trim(),text:document.getElementById('el-text').value.trim()});try{const r=await api('GET','/errorlog?'+p);renderRows('elTable',r,v=>`<td class="mono">${esc(v[0])}</td><td>${esc(v[1])}</td><td>${esc(v[2])}</td><td>${esc(v[3])}</td><td class="mono">${esc(v[4])}</td><td>${sBadge(v[5])}</td><td class="mono">${esc(v[6])}</td><td>${esc(v[7])}</td><td>${esc(v[8])}</td><td class="wrap">${esc(v[9])}</td><td>${esc(v[10])}</td><td>${esc(v[11])}</td>`,v=>elShowDetail(v[0]));document.getElementById('elDetailCard').style.display='none';setStatus('Error log: '+r.length+(r.length>=500?' (first 500 — narrow the filter)':''),r.length?'warn':'ok')}catch(e){}}
+async function elShowDetail(logId){try{const d=await api('GET','/errorlog/'+logId);const g=k=>d[k]===null||d[k]===undefined?'--':d[k];const kv=[['Log ID','LOG_ID'],['Service','SERVICE_NAME'],['Entity / Op',null],['Record ID','SOURCE_RECORD_ID'],['Status','FINAL_STATUS'],['Error Code','ERROR_CODE'],['Code Meaning','ERROR_DESCRIPTION'],['Retryable','IS_RETRYABLE'],['HTTP','HTTP_STATUS_CODE'],['ACK Code','ACK_STATUS_CODE'],['ACK Request ID','ACK_REQUEST_ID'],['ACK Description','ACK_DESCRIPTION'],['Callback Result','CALLBACK_RESULT_CODE'],['Callback Desc','CALLBACK_RESULT_DESC'],['CRM Entity ID','CRM_ENTITY_ID'],['CRM Ref No','CRM_REFERENCE_NO'],['Retry',null],['Manual Retry','MANUAL_RETRY'],['Txn Group','TRANSACTION_GROUP_ID'],['Attempt','ATTEMPT_NO'],['Created','CREATED'],['Sent','SENT'],['Callback','CALLBACK'],['Next Retry','NEXT_RETRY'],['Updated','UPDATED']];const val=(lbl,k)=>lbl==='Entity / Op'?g('ENTITY_NAME')+' / '+g('OPERATION_TYPE'):lbl==='Retry'?g('RETRY_COUNT')+' / '+g('MAX_RETRY_COUNT'):lbl==='Status'?sBadge(d.FINAL_STATUS):esc(g(k));let h='<div class="kv-grid">'+kv.map(([l,k])=>`<div class="k">${l}</div><div class="v">${val(l,k)}</div>`).join('')+'</div>';h+=`<div class="json-title">Error Message</div><pre class="json-box">${esc(g('ERROR_MESSAGE'))}</pre>`;const blocks=[['Validation Errors (callback)','CALLBACK_VALID_ERRORS'],['Request Payload (sent to APIC)','REQUEST_PAYLOAD'],['ACK Response (LEG 1)','ACK_RESPONSE'],['Callback Payload (LEG 2)','CALLBACK_PAYLOAD']];blocks.forEach(([t,k])=>{h+=`<div class="json-title">${t}</div><pre class="json-box">${esc(pretty(d[k]))}</pre>`});document.getElementById('elDetail').innerHTML=h;document.getElementById('elDetailTitle').textContent='LOG_ID '+logId+' — '+g('SERVICE_NAME')+' / '+g('SOURCE_RECORD_ID');document.getElementById('elDetailCard').style.display='block';elDetailText=kv.filter(([l,k])=>k).map(([l,k])=>l+': '+g(k)).join('\n')+'\n\nERROR_MESSAGE:\n'+g('ERROR_MESSAGE')+blocks.map(([t,k])=>'\n\n'+t+':\n'+pretty(d[k])).join('');document.getElementById('elDetailCard').scrollIntoView({behavior:'smooth'})}catch(e){}}
+function elCopyDetail(){if(!elDetailText)return;navigator.clipboard.writeText(elDetailText).then(()=>setStatus('Detail copied to clipboard','ok'),()=>setStatus('Copy failed — select text manually','warn'))}
+async function elRetry(){await monManualRetry('elTable');elRefresh()}
+async function elJobsRefresh(){try{const r=await api('GET','/errorlog/job-runs');renderRows('elJobTable',r,v=>`<td class="mono">${esc(v[0])}</td><td>${esc(v[1])}</td><td>${sBadge(v[2])}</td><td>${esc(v[3])}</td><td>${esc(v[4])}</td><td style="text-align:right">${esc(v[5])}</td><td style="text-align:right">${esc(v[6])}</td><td style="text-align:right">${esc(v[7])}</td><td class="wrap">${esc(v[8])}</td>`);setStatus('Job runs with errors: '+r.length,r.length?'warn':'ok')}catch(e){}}
+
+async function chainRefresh(){const p=new URLSearchParams({propertyCode:document.getElementById('ch-prop').value.trim(),state:document.getElementById('ch-state').value});setStatus('Loading chain status...');try{const r=await api('GET','/chain?'+p);renderRows('chainTable',r,v=>`<td class="mono" style="font-weight:600">${esc(v[0])}</td><td>${sBadge(v[1])}</td><td>${esc(v[2])}</td><td>${esc(v[3])}</td><td>${esc(v[4])}</td><td style="text-align:right">${esc(v[5])}</td><td style="text-align:right">${esc(v[6])}</td><td style="text-align:right">${esc(v[7])}</td><td style="text-align:right">${esc(v[8])}</td><td>${sBadge(v[9])}</td><td>${esc(v[10])}</td>`,v=>chainDetail(v[0]));const c={};r.forEach(x=>{const st=vals(x)[9];c[st]=(c[st]||0)+1});document.getElementById('chainKpi').textContent=['BROKEN','IN_PROGRESS','NOT_STARTED','COMPLETE'].map(k=>k+': '+(c[k]||0)).join('  ·  ');document.getElementById('chainDetailCard').style.display='none';setStatus('Chain: '+r.length+' properties'+(r.length>=300?' (first 300 — filter by property)':''),c.BROKEN?'warn':'ok')}catch(e){}}
+async function chainDetail(prop){try{const r=await api('GET','/chain/'+encodeURIComponent(prop));const lv={PROPERTY:2,BUILDING:2,FLOOR:3,UNIT:4};const icon={PROPERTY:'🏢',BUILDING:'🏬',FLOOR:'▤',UNIT:'🚪'};renderRows('chainDetailTable',r,v=>`<td class="${v[0]==='PROPERTY'?'':'chain-indent-'+lv[v[0]]}"><span class="chain-lvl">${icon[v[0]]||''} ${esc(v[0])}</span> <span class="mono">${esc(v[1])}</span></td><td class="mono">${esc(v[2])}</td><td>${sBadge(v[3])}</td><td class="mono">${esc(v[4])}</td><td class="mono" style="font-size:10px">${esc(v[5])}</td><td>${esc(v[6])}</td><td class="wrap">${esc(v[7])}</td>`,v=>{if(v[4]&&v[4]!=='--'){showTab('errorlog',document.querySelector(".tab-btn[onclick*='errorlog']"));elShowDetail(v[4])}});const bad=r.filter(x=>['EXHAUSTED','VALIDATION_FAILED','RECORD_NOT_FOUND','CRM_REJECTED','PARENT_FAILED'].includes(vals(x)[3])).length;document.getElementById('chainDetailTitle').textContent='Chain for '+prop+' — '+r.length+' nodes'+(bad?', '+bad+' broken':'')+' (click a node with a Log ID to open it in Error Log)';document.getElementById('chainDetailCard').style.display='block';document.getElementById('chainDetailCard').scrollIntoView({behavior:'smooth'})}catch(e){}}
 
 // SCRIPTS
 async function scriptGenerate(){const section=document.getElementById('sc-section').value;setStatus('Generating script...');try{const d=await api('GET','/scripts/generate?section='+section);document.getElementById('scOutput').value=d.script||'';const lines=(d.script||'').split('\n').length;document.getElementById('scLineCount').textContent=lines+' lines';setStatus('Script generated: '+lines+' lines','ok')}catch(e){}}

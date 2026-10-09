@@ -1,5 +1,6 @@
 package com.adib.crm.admin.service;
 
+import com.adib.crm.admin.config.QueryStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ public class TestPushService {
 
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataSource   dataSource;
+    @Autowired private QueryStore   q;
 
     public Map<String, Object> push(String serviceName, String keyValue) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -21,7 +23,7 @@ public class TestPushService {
         Long registryId;
         try {
             registryId = jdbc.queryForObject(
-                "SELECT REGISTRY_ID FROM CRM_MPM_API_REGISTRY WHERE SERVICE_NAME = ?",
+                q.get("query.testpush.registryid"),
                 Long.class, serviceName);
         } catch (Exception e) {
             throw new RuntimeException("Service not found: " + serviceName);
@@ -33,21 +35,12 @@ public class TestPushService {
 
         // Step 2 — delete any existing test log entry for this key
         jdbc.update(
-            "DELETE FROM CRM_MPM_CRM_INTEGRATION_LOG " +
-            "WHERE REGISTRY_ID = ? AND SOURCE_RECORD_ID = ? AND RETRY_COUNT = 0",
+            q.get("query.testpush.cleanup"),
             registryId, keyValue);
 
         // Step 3 — call SEND_TO_APIC
         try (Connection con = dataSource.getConnection();
-             CallableStatement cs = con.prepareCall(
-                "BEGIN " +
-                "    PKG_CRM_INTEGRATION.SEND_TO_APIC(" +
-                "        p_registry_id          => ?," +
-                "        p_key_value            => ?," +
-                "        p_transaction_group_id => NULL," +
-                "        p_attempt_no           => 1," +
-                "        p_log_id_out           => ?);" +
-                "END;")) {
+             CallableStatement cs = con.prepareCall(q.get("query.testpush.send"))) {
 
             cs.setLong(1, registryId);
             cs.setString(2, keyValue);

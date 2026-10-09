@@ -179,6 +179,50 @@ public class CrmAdminController {
         return ok(rows > 0 ? "Queued for retry: LOG_ID=" + logId : "Record not eligible for retry");
     }
 
+    @GetMapping("/monitor/parent-pending")
+    public ResponseEntity<?> parentPending() {
+        return ok(svc.parentPending());
+    }
+
+    // ── ERROR LOG ────────────────────────────────────────────────────────────
+    @GetMapping("/errorlog")
+    public ResponseEntity<?> errorLog(@RequestParam(required = false) String serviceName,
+                                       @RequestParam(required = false) String status,
+                                       @RequestParam(required = false) String errorCode,
+                                       @RequestParam(required = false) String fromDate,
+                                       @RequestParam(required = false) String toDate,
+                                       @RequestParam(required = false) String recordId,
+                                       @RequestParam(required = false) String text) {
+        return ok(svc.errorLog(serviceName, status, errorCode, fromDate, toDate, recordId, text));
+    }
+
+    @GetMapping("/errorlog/codes")
+    public ResponseEntity<?> errorLogCodes() {
+        return ok(svc.errorLogCodes());
+    }
+
+    @GetMapping("/errorlog/job-runs")
+    public ResponseEntity<?> jobRunErrors() {
+        return ok(svc.jobRunErrors());
+    }
+
+    @GetMapping("/errorlog/{logId}")
+    public ResponseEntity<?> errorLogDetail(@PathVariable String logId) {
+        return ok(svc.errorLogDetail(logId));
+    }
+
+    // ── CHAIN STATUS ─────────────────────────────────────────────────────────
+    @GetMapping("/chain")
+    public ResponseEntity<?> chainSummary(@RequestParam(required = false) String propertyCode,
+                                           @RequestParam(required = false) String state) {
+        return ok(svc.chainSummary(propertyCode, state));
+    }
+
+    @GetMapping("/chain/{propertyCode}")
+    public ResponseEntity<?> chainDetail(@PathVariable String propertyCode) {
+        return ok(svc.chainDetail(propertyCode));
+    }
+
     @GetMapping("/monitor/service-names")
     public ResponseEntity<?> serviceNames() {
         return ok(svc.serviceNames());

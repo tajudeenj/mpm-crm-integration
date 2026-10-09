@@ -7,6 +7,9 @@
 -- Find each SEARCH text in your current package body
 -- Add the ADD lines immediately after/before as indicated
 -- Do NOT replace your entire package — only add these snippets
+--
+-- >>> THEN ALSO APPLY sql/SIT_PARENT_RELEASE_DEPLOY.sql (CHANGES 4-6) <<<
+-- Without it, PARENT_PENDING children are never re-sent (watermark gap).
 -- ============================================================
 
 -- ============================================================
