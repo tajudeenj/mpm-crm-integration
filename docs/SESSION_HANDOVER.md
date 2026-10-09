@@ -135,7 +135,8 @@ RUN_TIMEOUT_JOB
    watermark update moves to MAX(filter col) of the whole view, so a skipped
    child is NEVER re-read. Since callbacks are async (up to 60 min), the parent
    is almost never SUCCESS in the same run -> chain would stall at Building.
-   FIX: sql/SIT_PARENT_RELEASE_DEPLOY.sql (changes 4-6) — release pass at the
+   FIX: merged into PKG_CRM_INTEGRATION_SPEC_V2 + BODY_FINAL (snippet copy in
+   sql/SIT_PARENT_RELEASE_DEPLOY.sql, changes 4-6) — release pass at the
    start of each RUN_OUTBOUND_JOB reads PARENT_PENDING rows from the LOG and
    sends them once parent is SUCCESS. Pending row -> RELEASED (+ new SENT row).
    Parent terminal failure -> child PARENT_FAILED; parent retried -> back to PENDING.
@@ -247,7 +248,8 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 
 #### Tajudeen (DBA/Package)
 1. Add 3 snippets to SIT package (file: docs/PACKAGE_CHANGES_SNIPPET.sql)
-1b. Add changes 4-6 (file: sql/SIT_PARENT_RELEASE_DEPLOY.sql) — REQUIRED,
+1b. Recompile spec + body from sql/schema/ (now include RELEASE_PARENT_PENDING)
+    OR apply only changes 4-6 via sql/SIT_PARENT_RELEASE_DEPLOY.sql — REQUIRED,
     without it children stay PARENT_PENDING forever
 2. Insert PARENT_PENDING and PARENT_FAILED error codes (see below)
 3. Change outbound job to 15 min interval

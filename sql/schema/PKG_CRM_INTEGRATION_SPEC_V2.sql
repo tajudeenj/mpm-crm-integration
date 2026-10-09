@@ -62,6 +62,7 @@ CREATE OR REPLACE PACKAGE PKG_CRM_INTEGRATION AS
     /* ------------------------------------------------------------------
        SCHEDULED JOBS — called by DBMS_SCHEDULER
        ------------------------------------------------------------------ */
+    PROCEDURE RELEASE_PARENT_PENDING; -- Session 9: send children whose parent reached SUCCESS
     PROCEDURE RUN_OUTBOUND_JOB;    -- existing: view-based outbound
     PROCEDURE RUN_TIMEOUT_JOB;     -- existing: marks timed-out records
     PROCEDURE RUN_RETRY_JOB;       -- existing: retries failed log records

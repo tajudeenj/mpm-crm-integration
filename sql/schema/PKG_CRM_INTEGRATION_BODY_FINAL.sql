@@ -814,6 +814,141 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
 
 
     /* ====================================================================
+       RELEASE_PARENT_PENDING  (Session 9 — 09-Oct-2026)
+       Children skipped as PARENT_PENDING are never re-read by the outbound
+       cursor (watermark moves past them). This pass works from the LOG:
+       parent SUCCESS -> send child, pending row -> RELEASED
+       parent terminal failure -> PARENT_FAILED ; parent retried -> PARENT_PENDING
+       Called at the start of every RUN_OUTBOUND_JOB.
+       ==================================================================== */
+    PROCEDURE RELEASE_PARENT_PENDING IS
+        v_parent_key     VARCHAR2(500);
+        v_parent_ok      NUMBER;
+        v_parent_status  VARCHAR2(30);
+        v_new_log_id     NUMBER;
+        v_err_msg        VARCHAR2(4000);
+    BEGIN
+        FOR p IN (
+            SELECT L.LOG_ID, L.REGISTRY_ID, L.SOURCE_RECORD_ID, L.FINAL_STATUS,
+                   R.DEPENDS_ON_REGISTRY_ID, R.PARENT_LINK_COL,
+                   R.SOURCE_VIEW, R.SOURCE_KEY_COL
+            FROM   CRM_MPM_CRM_INTEGRATION_LOG L
+            JOIN   CRM_MPM_API_REGISTRY R ON R.REGISTRY_ID = L.REGISTRY_ID
+            WHERE  L.FINAL_STATUS IN ('PARENT_PENDING','PARENT_FAILED')
+            AND    R.IS_ACTIVE = 'Y'
+            AND    R.DEPENDS_ON_REGISTRY_ID IS NOT NULL
+            AND    R.PARENT_LINK_COL IS NOT NULL
+            ORDER  BY R.EXECUTION_ORDER, L.LOG_ID
+        ) LOOP
+            BEGIN
+                -- 1. Resolve parent key from the child's source view
+                v_parent_key := NULL;
+                BEGIN
+                    EXECUTE IMMEDIATE
+                        'SELECT ' || p.PARENT_LINK_COL ||
+                        ' FROM '  || p.SOURCE_VIEW ||
+                        ' WHERE ' || p.SOURCE_KEY_COL || ' = :k AND ROWNUM = 1'
+                        INTO v_parent_key USING p.SOURCE_RECORD_ID;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN v_parent_key := NULL;
+                END;
+
+                IF v_parent_key IS NOT NULL THEN
+
+                    -- 2. Same rule as the outbound check: any SUCCESS row for parent
+                    SELECT COUNT(*) INTO v_parent_ok
+                    FROM   CRM_MPM_CRM_INTEGRATION_LOG
+                    WHERE  REGISTRY_ID      = p.DEPENDS_ON_REGISTRY_ID
+                    AND    SOURCE_RECORD_ID = v_parent_key
+                    AND    FINAL_STATUS     = 'SUCCESS';
+
+                    IF v_parent_ok > 0 THEN
+                        -- 3. Send the child
+                        v_new_log_id := NULL;
+                        v_err_msg    := NULL;
+                        BEGIN
+                            SEND_TO_APIC(
+                                p_registry_id => p.REGISTRY_ID,
+                                p_key_value   => p.SOURCE_RECORD_ID,
+                                p_attempt_no  => 1,
+                                p_log_id_out  => v_new_log_id);
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                v_err_msg := SQLERRM;
+                                -- SEND_TO_APIC marks its own row FAILED before RAISE
+                                -- (retry job owns it); OUT param is lost, so look it up
+                                SELECT MAX(LOG_ID) INTO v_new_log_id
+                                FROM   CRM_MPM_CRM_INTEGRATION_LOG
+                                WHERE  REGISTRY_ID      = p.REGISTRY_ID
+                                AND    SOURCE_RECORD_ID = p.SOURCE_RECORD_ID
+                                AND    LOG_ID           > p.LOG_ID
+                                AND    FINAL_STATUS NOT IN ('PARENT_PENDING','PARENT_FAILED','RELEASED');
+                        END;
+
+                        IF v_new_log_id IS NOT NULL THEN
+                            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                            SET    FINAL_STATUS  = 'RELEASED',
+                                   ERROR_MESSAGE = SUBSTR(ERROR_MESSAGE || ' | Released '
+                                                   || TO_CHAR(SYSDATE,'DD-MON-YYYY HH24:MI')
+                                                   || ' -> LOG_ID=' || v_new_log_id, 1, 4000),
+                                   UPDATED_DATE  = SYSTIMESTAMP
+                            WHERE  LOG_ID = p.LOG_ID;
+                        ELSE
+                            -- Nothing was logged: stay pending, try again next run
+                            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                            SET    ERROR_MESSAGE = SUBSTR('Release attempt failed: ' || v_err_msg, 1, 4000),
+                                   UPDATED_DATE  = SYSTIMESTAMP
+                            WHERE  LOG_ID = p.LOG_ID;
+                        END IF;
+
+                    ELSE
+                        -- 4. Parent not SUCCESS yet: flag terminal failures so they are visible
+                        SELECT MAX(FINAL_STATUS) KEEP (DENSE_RANK LAST ORDER BY LOG_ID)
+                        INTO   v_parent_status
+                        FROM   CRM_MPM_CRM_INTEGRATION_LOG
+                        WHERE  REGISTRY_ID      = p.DEPENDS_ON_REGISTRY_ID
+                        AND    SOURCE_RECORD_ID = v_parent_key
+                        AND    FINAL_STATUS    <> 'RELEASED';
+
+                        IF v_parent_status IN ('EXHAUSTED','VALIDATION_FAILED',
+                                               'RECORD_NOT_FOUND','CRM_REJECTED','PARENT_FAILED')
+                           AND p.FINAL_STATUS = 'PARENT_PENDING' THEN
+                            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                            SET    FINAL_STATUS  = 'PARENT_FAILED',
+                                   ERROR_CODE    = 'PARENT_FAILED',
+                                   ERROR_MESSAGE = SUBSTR('Parent Registry=' || p.DEPENDS_ON_REGISTRY_ID
+                                                   || ' Key=' || v_parent_key
+                                                   || ' is ' || v_parent_status, 1, 4000),
+                                   UPDATED_DATE  = SYSTIMESTAMP
+                            WHERE  LOG_ID = p.LOG_ID;
+                        ELSIF (v_parent_status IS NULL OR v_parent_status NOT IN
+                                  ('EXHAUSTED','VALIDATION_FAILED','RECORD_NOT_FOUND',
+                                   'CRM_REJECTED','PARENT_FAILED'))
+                           AND p.FINAL_STATUS = 'PARENT_FAILED' THEN
+                            -- Parent was manually retried: back to waiting
+                            UPDATE CRM_MPM_CRM_INTEGRATION_LOG
+                            SET    FINAL_STATUS  = 'PARENT_PENDING',
+                                   ERROR_CODE    = 'PARENT_PENDING',
+                                   ERROR_MESSAGE = SUBSTR('Waiting for parent Registry='
+                                                   || p.DEPENDS_ON_REGISTRY_ID
+                                                   || ' Key=' || v_parent_key
+                                                   || ' to reach SUCCESS status', 1, 4000),
+                                   UPDATED_DATE  = SYSTIMESTAMP
+                            WHERE  LOG_ID = p.LOG_ID;
+                        END IF;
+                    END IF;
+                END IF;
+
+                COMMIT;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    ROLLBACK;  -- one bad row must never stop the outbound job
+            END;
+        END LOOP;
+    END RELEASE_PARENT_PENDING;
+
+
+    /* ====================================================================
        RUN_OUTBOUND_JOB
        ==================================================================== */
     PROCEDURE RUN_OUTBOUND_JOB IS
@@ -856,6 +991,13 @@ create or replace PACKAGE BODY PKG_CRM_INTEGRATION AS
         VALUES ('OUTBOUND_PUSH', 'RUNNING')
         RETURNING RUN_ID INTO v_run_id;
         COMMIT;
+
+        -- Session 9: release children whose parent has since reached SUCCESS
+        BEGIN
+            RELEASE_PARENT_PENDING;
+        EXCEPTION
+            WHEN OTHERS THEN NULL;  -- never block the main outbound run
+        END;
 
         FOR reg IN (
             SELECT r.*, w.LAST_PROCESSED_TS
