@@ -269,8 +269,10 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
 - ✅ Outbound scheduler job at 15 min
 - ✅ 10-Oct: SYS_C005700592 (FINAL_STATUS check) DROPPED on SIT. Decision:
   NOT re-added (re-add step in sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql is optional).
-  PROD: check for same constraint before go-live (QUERY 27) and drop it too,
-  else callbacks + PARENT_PENDING fail there exactly as on SIT.
+  PROD: greenfield — nothing exists yet; PROD will be built fresh from the
+  repo scripts. So the repo DDL is the source of truth for PROD. The 15 other
+  CHECK constraints seen on SIT (QUERY 27) are NOT in repo DDL -> they will
+  not exist on PROD unless added to the repo before go-live.
 - QUERY 27 (10-Oct): 16 CHECK constraints on SIT, none in repo DDL. Only
   FINAL_STATUS is wrong for the package. But admin-tool dropdowns did NOT
   match them (saves would fail ORA-02290) — FIXED both tools to match DB:
