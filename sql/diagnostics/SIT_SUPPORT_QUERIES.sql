@@ -486,3 +486,18 @@ WHERE  C.CONSTRAINT_TYPE = 'C'
 AND    C.TABLE_NAME LIKE 'CRM_MPM%'
 AND    C.SEARCH_CONDITION_VC NOT LIKE '%IS NOT NULL%'
 ORDER  BY C.TABLE_NAME, C.CONSTRAINT_NAME;
+
+-- =============================================================================
+-- QUERY 28: DID THIS CALLBACK REACH ORACLE? — search audit by request_id
+-- Run on SIT AND on DEV (SIT callback URL may still point to DEV).
+-- Input   : request_id from ACK_RESPONSE (QUERY 17)
+-- No row in either DB = callback never reached Oracle -> check APIC / ESB
+-- logs with the same request_id. PROCESS_CRM_CALLBACK writes the audit row
+-- even when it fails (CB_1003), so "no row" really means "never arrived".
+-- =============================================================================
+PROMPT -- QUERY 28: CALLBACK BY REQUEST_ID
+SELECT AUDIT_ID, TO_CHAR(RECEIVED_AT,'DD-MON-YY HH24:MI:SS') AS RECEIVED_AT,
+       SERVICE_NAME, X_UNIQUE_ID, REQUEST_ID, STATUS_CODE_SENT, DESCRIPTION_SENT
+FROM   CRM_MPM_CALLBACK_AUDIT_LOG
+WHERE  REQUEST_ID = '&request_id'
+   OR  RAW_PAYLOAD LIKE '%&request_id%';

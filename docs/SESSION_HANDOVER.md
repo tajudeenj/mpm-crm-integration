@@ -237,7 +237,7 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 ## WORKING RULE — SUPPORT QUERIES
 All support / diagnostic queries go into ONE file:
   sql/diagnostics/SIT_SUPPORT_QUERIES.sql
-Append each new query as the next QUERY number (last: QUERY 27) and push.
+Append each new query as the next QUERY number (last: QUERY 28) and push.
 Tajudeen downloads it, runs the query, shares output. Do not create new files.
 
 ## CURRENT STATUS (09-Oct-2026)
@@ -262,6 +262,16 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
   ALSO block PARENT_PENDING / PARENT_FAILED / RELEASED inserts (QUERY 27 lists all).
 - After fix, building 523118 will land as DUPLICATE_RECORD -> its floors wait
   forever (decision D1 is now real, not theoretical).
+
+### ISSUE — callback not arriving after manual retry (10-Oct-2026)
+- Building 523118 manual retry: ACK 0000 success, FINAL_STATUS SENT, no callback,
+  no new row in CRM_MPM_CALLBACK_AUDIT_LOG.
+- Callback path: CRM -> APIC -> IBM ESB -> PROCESS_CRM_CALLBACK (Oracle).
+  Audit row is written only when ESB reaches Oracle -> any failure before
+  that (APIC/ESB/network/wrong env) leaves NO trace on our side.
+- Suspect: open item 'SIT callback URL still pointing to DEV'. Check DEV audit
+  with QUERY 28 (request_id). If absent in both -> APIC/ESB logs by request_id.
+- Visibility gap noted: we cannot see callback failures upstream of Oracle.
 
 ### SIT deployment — DONE 09/10-Oct-2026 (Tajudeen)
 - ✅ Error codes: PARENT_PENDING, PARENT_FAILED, MANUAL_RETRY (category CHECK constraint dropped on SIT)
