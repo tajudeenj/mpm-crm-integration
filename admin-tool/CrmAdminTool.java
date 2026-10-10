@@ -1432,9 +1432,9 @@ class RegistryTab extends JPanel {
         tfServiceName       = CrmAdminTool.mkField(200);
         tfEntityName        = CrmAdminTool.mkField(200);
         cbOperationType     = CrmAdminTool.mkCombo(
-            new String[]{"CREATE","UPDATE","DELETE","BATCH"});
+            new String[]{"CREATE","UPDATE","STATUS_UPDATE","LEGAL_HOLD","OTHER"});
         cbSourceType        = CrmAdminTool.mkCombo(
-            new String[]{"VIEW","PROCEDURE","BATCH"});
+            new String[]{"VIEW","PROCEDURE"});
         tfSourceView        = CrmAdminTool.mkField(200);
         tfSourceProc        = CrmAdminTool.mkField(200);
         tfSourceFilterCol   = CrmAdminTool.mkField(200);
@@ -1608,9 +1608,9 @@ class RegistryTab extends JPanel {
         JTextField w_svcName    = CrmAdminTool.mkField(220);
         JTextField w_entityName = CrmAdminTool.mkField(220);
         JComboBox  w_opType     = CrmAdminTool.mkCombo(
-            new String[]{"CREATE","UPDATE","DELETE","BATCH"});
+            new String[]{"CREATE","UPDATE","STATUS_UPDATE","LEGAL_HOLD","OTHER"});
         JComboBox  w_srcType    = CrmAdminTool.mkCombo(
-            new String[]{"VIEW","PROCEDURE","BATCH"});
+            new String[]{"VIEW","PROCEDURE"});
         JTextField w_srcView    = CrmAdminTool.mkField(220);
         JTextField w_srcKey     = CrmAdminTool.mkField(220);
         JTextField w_jsonMap    = CrmAdminTool.mkField(220);

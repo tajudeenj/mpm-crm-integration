@@ -268,6 +268,14 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
 - ✅ Package changes 1-6 applied, spec + body compiled VALID
 - ✅ Outbound scheduler job at 15 min
 - ⏳ NEXT (BLOCKER): run sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql
+- QUERY 27 (10-Oct): 16 CHECK constraints on SIT, none in repo DDL. Only
+  FINAL_STATUS is wrong for the package. But admin-tool dropdowns did NOT
+  match them (saves would fail ORA-02290) — FIXED both tools to match DB:
+    OPERATION_TYPE : CREATE, UPDATE, STATUS_UPDATE, LEGAL_HOLD, OTHER
+    SOURCE_TYPE    : VIEW, PROCEDURE
+    DATA_TYPE      : STRING, NUMBER, DATE, BOOLEAN   (web had VARCHAR/CLOB)
+  OK as-is: JOB_RUN_HISTORY.STATUS, OUTBOUND_STAGING.STATUS, IS_* Y/N,
+  CHK_CRM_ERR_CATEGORY (re-added on SIT with real categories).
 - ⏳ NEXT: rebuild web app (crm-admin-web: mvn clean package -DskipTests), git pull
 - ⏳ NEXT: run Property->Building->Floor->Unit chain test, watch Chain Status tab
 - ⏳ OPEN: send SOURCE_FILTER_COL for registry 22-29 — decides fix for
