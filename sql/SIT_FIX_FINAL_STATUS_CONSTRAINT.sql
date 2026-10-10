@@ -22,7 +22,8 @@ GROUP  BY FINAL_STATUS ORDER BY 1;
 -- 2. Drop the system-named constraint
 ALTER TABLE CRM_MPM_CRM_INTEGRATION_LOG DROP CONSTRAINT SYS_C005700592;
 
--- 3. Re-create, named, with the full list
+-- 3. OPTIONAL (SIT decision 10-Oct-2026: dropped, NOT re-added)
+--    Re-create, named, with the full list
 --    Keep the exact spelling from the old constraint for ALREADY_PROCESSED
 --    (check step 1 output if unsure).
 ALTER TABLE CRM_MPM_CRM_INTEGRATION_LOG

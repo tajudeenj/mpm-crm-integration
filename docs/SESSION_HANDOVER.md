@@ -267,7 +267,10 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
 - ✅ Error codes: PARENT_PENDING, PARENT_FAILED, MANUAL_RETRY (category CHECK constraint dropped on SIT)
 - ✅ Package changes 1-6 applied, spec + body compiled VALID
 - ✅ Outbound scheduler job at 15 min
-- ⏳ NEXT (BLOCKER): run sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql
+- ✅ 10-Oct: SYS_C005700592 (FINAL_STATUS check) DROPPED on SIT. Decision:
+  NOT re-added (re-add step in sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql is optional).
+  PROD: check for same constraint before go-live (QUERY 27) and drop it too,
+  else callbacks + PARENT_PENDING fail there exactly as on SIT.
 - QUERY 27 (10-Oct): 16 CHECK constraints on SIT, none in repo DDL. Only
   FINAL_STATUS is wrong for the package. But admin-tool dropdowns did NOT
   match them (saves would fail ORA-02290) — FIXED both tools to match DB:
