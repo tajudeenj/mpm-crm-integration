@@ -249,6 +249,12 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
   violated -> returned CB_1003 'Unhandled exception' -> nothing written to log.
 - Log row stayed SENT -> TIMEOUT (retryable) -> resent -> duplicate again.
   15 sends 08-09 Oct (LOG 2389..2713), all TIMEOUT/EXHAUSTED, CALLBACK_DATE null.
+- CONFIRMED (QUERY 26): SYS_C005700592 = CHECK on CRM_MPM_CRM_INTEGRATION_LOG.FINAL_STATUS
+  allowing only PENDING, ACK_FAILED, SENT, SUCCESS, FAILED, TIMEOUT,
+  ALREADY_PROCESSED, EXHAUSTED. Blocks every non-SUCCESS callback status AND
+  PARENT_PENDING / PARENT_FAILED / RELEASED.
+- FIX: sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql — drop SYS_C005700592, add named
+  CK_CRM_LOG_FINAL_STATUS with all 19 statuses. RULE: new status -> add here too.
 - SYS_C005700592 is NOT in repo DDL (added on DB directly, like the
   ERROR_CATEGORY check). Suspect CHECK on FINAL_STATUS (log) or on the
   callback target table status column. Identify with QUERY 26.
@@ -261,6 +267,7 @@ Tajudeen downloads it, runs the query, shares output. Do not create new files.
 - ✅ Error codes: PARENT_PENDING, PARENT_FAILED, MANUAL_RETRY (category CHECK constraint dropped on SIT)
 - ✅ Package changes 1-6 applied, spec + body compiled VALID
 - ✅ Outbound scheduler job at 15 min
+- ⏳ NEXT (BLOCKER): run sql/SIT_FIX_FINAL_STATUS_CONSTRAINT.sql
 - ⏳ NEXT: rebuild web app (crm-admin-web: mvn clean package -DskipTests), git pull
 - ⏳ NEXT: run Property->Building->Floor->Unit chain test, watch Chain Status tab
 - ⏳ OPEN: send SOURCE_FILTER_COL for registry 22-29 — decides fix for
