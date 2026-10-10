@@ -237,10 +237,25 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 ## WORKING RULE — SUPPORT QUERIES
 All support / diagnostic queries go into ONE file:
   sql/diagnostics/SIT_SUPPORT_QUERIES.sql
-Append each new query as the next QUERY number (last: QUERY 25) and push.
+Append each new query as the next QUERY number (last: QUERY 27) and push.
 Tajudeen downloads it, runs the query, shares output. Do not create new files.
 
 ## CURRENT STATUS (09-Oct-2026)
+
+### ISSUE — Building 523118 callback failing (found 10-Oct-2026)
+- CRM callback: status 9999, result_code DUPLICATE_RECORD — building already
+  exists in PxRM (CRM Id 8d8e9f77-1ac3-f111-aaad-7ced8dac5956).
+- Our callback handler crashed: ORA-02290 check constraint APPS.SYS_C005700592
+  violated -> returned CB_1003 'Unhandled exception' -> nothing written to log.
+- Log row stayed SENT -> TIMEOUT (retryable) -> resent -> duplicate again.
+  15 sends 08-09 Oct (LOG 2389..2713), all TIMEOUT/EXHAUSTED, CALLBACK_DATE null.
+- SYS_C005700592 is NOT in repo DDL (added on DB directly, like the
+  ERROR_CATEGORY check). Suspect CHECK on FINAL_STATUS (log) or on the
+  callback target table status column. Identify with QUERY 26.
+- RISK: if it is a FINAL_STATUS check on CRM_MPM_CRM_INTEGRATION_LOG it will
+  ALSO block PARENT_PENDING / PARENT_FAILED / RELEASED inserts (QUERY 27 lists all).
+- After fix, building 523118 will land as DUPLICATE_RECORD -> its floors wait
+  forever (decision D1 is now real, not theoretical).
 
 ### SIT deployment — DONE 09/10-Oct-2026 (Tajudeen)
 - ✅ Error codes: PARENT_PENDING, PARENT_FAILED, MANUAL_RETRY (category CHECK constraint dropped on SIT)

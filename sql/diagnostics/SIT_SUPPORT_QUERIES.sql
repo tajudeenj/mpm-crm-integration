@@ -461,3 +461,28 @@ SELECT LVL, NODE_KEY, PARENT_KEY, ST AS STATUS, NVL(TO_CHAR(LOG_ID),'--') AS LOG
 FROM   CN
 WHERE  PROP = '&property_code'
 ORDER  BY LVL_NO, PARENT_KEY NULLS FIRST, NODE_KEY;
+
+-- =============================================================================
+-- QUERY 26: IDENTIFY A CONSTRAINT BY NAME (e.g. from ORA-02290 / ORA-02293)
+-- Use when: callback returns CB_1003 "check constraint (APPS.SYS_Cxxxx) violated"
+-- Input   : constraint name, e.g. SYS_C005700592
+-- =============================================================================
+PROMPT -- QUERY 26: WHICH TABLE/COLUMN IS THIS CONSTRAINT ON
+SELECT C.OWNER, C.TABLE_NAME, CC.COLUMN_NAME, C.CONSTRAINT_TYPE,
+       C.SEARCH_CONDITION, C.STATUS
+FROM   ALL_CONSTRAINTS C
+JOIN   ALL_CONS_COLUMNS CC ON CC.OWNER = C.OWNER AND CC.CONSTRAINT_NAME = C.CONSTRAINT_NAME
+WHERE  C.CONSTRAINT_NAME = UPPER('&constraint_name');
+
+-- =============================================================================
+-- QUERY 27: ALL CHECK CONSTRAINTS ON INTEGRATION TABLES (find hidden SYS_C ones)
+-- None of these are in repo DDL — anything listed was added directly on the DB
+-- =============================================================================
+PROMPT -- QUERY 27: CHECK CONSTRAINTS ON CRM_MPM TABLES
+SELECT C.TABLE_NAME, C.CONSTRAINT_NAME, CC.COLUMN_NAME, C.SEARCH_CONDITION
+FROM   USER_CONSTRAINTS C
+JOIN   USER_CONS_COLUMNS CC ON CC.CONSTRAINT_NAME = C.CONSTRAINT_NAME
+WHERE  C.CONSTRAINT_TYPE = 'C'
+AND    C.TABLE_NAME LIKE 'CRM_MPM%'
+AND    C.SEARCH_CONDITION_VC NOT LIKE '%IS NOT NULL%'
+ORDER  BY C.TABLE_NAME, C.CONSTRAINT_NAME;
