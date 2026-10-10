@@ -234,6 +234,12 @@ NOT applied to: 125 (WorkRequest), 83, 122, 141
 
 ---
 
+## WORKING RULE — SUPPORT QUERIES
+All support / diagnostic queries go into ONE file:
+  sql/diagnostics/SIT_SUPPORT_QUERIES.sql
+Append each new query as the next QUERY number (last: QUERY 25) and push.
+Tajudeen downloads it, runs the query, shares output. Do not create new files.
+
 ## CURRENT STATUS (09-Oct-2026)
 
 ### SIT deployment — DONE 09/10-Oct-2026 (Tajudeen)
